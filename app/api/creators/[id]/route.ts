@@ -1,0 +1,270 @@
+import { NextRequest, NextResponse } from "next/server";
+import {
+  getCurrentUserId,
+  unauthorized,
+  forbidden,
+  badRequest,
+  notFound,
+  serverError,
+} from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import {
+  isValidEnum,
+  VALID_PLATFORMS,
+  VALID_CATEGORIES,
+  VALID_AVAILABILITY,
+  checkLength,
+  LIMITS,
+  validateContacts,
+} from "@/lib/validation";
+
+function getCreatorInclude() {
+  return {
+    platforms: true,
+    portfolio: { orderBy: { createdAt: "desc" as const } },
+    priceItems: { orderBy: { sortOrder: "asc" as const } },
+    boosts: { where: { expiresAt: { gte: new Date() } } },
+    user: { select: { id: true, name: true, email: true, avatarColor: true } },
+  };
+}
+
+// GET /api/creators/[id] — публичный профиль
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id } = await params;
+    const profile = await prisma.creatorProfile.findUnique({
+      where: { id },
+      include: getCreatorInclude(),
+    });
+    if (!profile) return notFound("Профиль не найден");
+
+    // Обновляем lastActiveAt для публичного просмотра
+    prisma.creatorProfile
+      .update({ where: { id }, data: { lastActiveAt: new Date() } })
+      .catch(() => {});
+
+    return NextResponse.json(profile);
+  } catch (err) {
+    console.error("[GET /api/creators/[id]]", err);
+    return serverError();
+  }
+}
+
+// PUT /api/creators/[id] — полное обновление
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const userId = await getCurrentUserId(req);
+    if (!userId) return unauthorized();
+
+    const { id } = await params;
+    const existing = await prisma.creatorProfile.findUnique({ where: { id } });
+    if (!existing) return notFound("Профиль не найден");
+    if (existing.userId !== userId) return forbidden();
+
+    const body = await req.json();
+    const {
+      title,
+      fullName,
+      city,
+      bio,
+      age,
+      username,
+      availability,
+      contentCategories,
+      platforms,
+      contacts,
+      pricing,
+    } = body;
+
+    if (!title?.trim()) return badRequest("Название обязательно");
+    const titleErr = checkLength(title?.trim(), "Название", LIMITS.title.min, LIMITS.title.max);
+    if (titleErr) return badRequest(titleErr);
+
+    if (!fullName?.trim()) return badRequest("Имя обязательно");
+    const nameErr = checkLength(fullName?.trim(), "Имя", LIMITS.name.min, LIMITS.name.max);
+    if (nameErr) return badRequest(nameErr);
+
+    // Enum validation
+    if (contentCategories) {
+      for (const cat of contentCategories) {
+        if (!isValidEnum(String(cat), VALID_CATEGORIES)) {
+          return badRequest(`Недопустимая категория: ${cat}`);
+        }
+      }
+    }
+    if (platforms) {
+      for (const p of platforms) {
+        if (!isValidEnum(String(p.name), VALID_PLATFORMS)) {
+          return badRequest(`Недопустимая платформа: ${p.name}`);
+        }
+      }
+    }
+    if (availability && !isValidEnum(String(availability), VALID_AVAILABILITY)) {
+      return badRequest("Недопустимое значение доступности");
+    }
+    if (bio) {
+      const bioErr = checkLength(bio, "Биография", 0, LIMITS.bio.max);
+      if (bioErr) return badRequest(bioErr);
+    }
+    if (age !== undefined && age !== null && (typeof age !== "number" || age < 0 || age > 120)) {
+      return badRequest("Возраст должен быть от 0 до 120");
+    }
+    const contactsErr = validateContacts(contacts);
+    if (contactsErr) return badRequest(contactsErr);
+
+    // Всё в одной транзакции: delete + update + create
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const profile = await prisma.$transaction(async (tx: any) => {
+      // Удаляем старые платформы, прайс-лист и портфолио
+      await Promise.all([
+        tx.creatorPlatform.deleteMany({ where: { profileId: id } }),
+        ...(pricing?.items !== undefined
+          ? [tx.creatorPriceItem.deleteMany({ where: { profileId: id } })]
+          : []),
+        ...(body.portfolio !== undefined
+          ? [tx.portfolioItem.deleteMany({ where: { profileId: id } })]
+          : []),
+      ]);
+
+      // Обновляем профиль + создаём новые связанные записи
+      return tx.creatorProfile.update({
+        where: { id },
+        data: {
+          title: title.trim(),
+          fullName: fullName.trim(),
+          city,
+          bio: bio ?? null,
+          age: age ?? null,
+          username: username ?? null,
+          avatar: body.avatar !== undefined ? body.avatar : undefined,
+          screenshots: body.screenshots !== undefined ? body.screenshots : undefined,
+          availability: availability ?? "available",
+          contentCategories: contentCategories ?? [],
+          contactTelegram: contacts?.telegram ?? null,
+          contactWhatsapp: contacts?.whatsapp ?? null,
+          contactPhone: contacts?.phone ?? null,
+          contactEmail: contacts?.email ?? null,
+          minimumRate: pricing?.minimumRate ?? 0,
+          negotiable: pricing?.negotiable ?? true,
+          // Платформы
+          platforms: {
+            create: (platforms ?? []).map((p: { name: string; handle: string; url: string; followers?: number | null }) => ({
+              name: p.name,
+              handle: p.handle ?? "",
+              url: p.url ?? "",
+              followers: p.followers ?? null,
+            })),
+          },
+          // Прайс-лист (если передан)
+          ...(pricing?.items !== undefined && {
+            priceItems: {
+              create: (pricing.items ?? []).map(
+                (item: { label: string; price: number }, idx: number) => ({
+                  label: item.label,
+                  price: item.price,
+                  sortOrder: idx,
+                }),
+              ),
+            },
+          }),
+          // Портфолио (если передано)
+          ...(body.portfolio !== undefined && {
+            portfolio: {
+              create: (body.portfolio ?? []).map(
+                (item: { videoUrl: string; category?: string; description?: string; thumbnail?: string }) => ({
+                  videoUrl: item.videoUrl,
+                  category: item.category ?? null,
+                  description: item.description ?? null,
+                  thumbnail: item.thumbnail ?? null,
+                }),
+              ),
+            },
+          }),
+        },
+        include: getCreatorInclude(),
+      });
+    });
+
+    return NextResponse.json(profile);
+  } catch (err) {
+    console.error("[PUT /api/creators/[id]]", err);
+    return serverError();
+  }
+}
+
+// PATCH /api/creators/[id] — частичное обновление
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const userId = await getCurrentUserId(req);
+    if (!userId) return unauthorized();
+
+    const { id } = await params;
+    const existing = await prisma.creatorProfile.findUnique({ where: { id } });
+    if (!existing) return notFound("Профиль не найден");
+    if (existing.userId !== userId) return forbidden();
+
+    const body = await req.json();
+    const allowedFields = [
+      "title", "fullName", "city", "bio", "age", "username",
+      "availability", "contentCategories", "minimumRate", "negotiable",
+    ];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: Record<string, any> = {};
+    for (const field of allowedFields) {
+      if (field in body) data[field] = body[field];
+    }
+    if ("contacts" in body) {
+      data.contactTelegram = body.contacts?.telegram ?? null;
+      data.contactWhatsapp = body.contacts?.whatsapp ?? null;
+      data.contactPhone = body.contacts?.phone ?? null;
+      data.contactEmail = body.contacts?.email ?? null;
+    }
+    if ("pricing" in body) {
+      if (body.pricing?.minimumRate !== undefined) data.minimumRate = body.pricing.minimumRate;
+      if (body.pricing?.negotiable !== undefined) data.negotiable = body.pricing.negotiable;
+    }
+
+    const profile = await prisma.creatorProfile.update({
+      where: { id },
+      data,
+      include: getCreatorInclude(),
+    });
+
+    return NextResponse.json(profile);
+  } catch (err) {
+    console.error("[PATCH /api/creators/[id]]", err);
+    return serverError();
+  }
+}
+
+// DELETE /api/creators/[id] — удалить профиль
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const userId = await getCurrentUserId(req);
+    if (!userId) return unauthorized();
+
+    const { id } = await params;
+    const existing = await prisma.creatorProfile.findUnique({ where: { id } });
+    if (!existing) return notFound("Профиль не найден");
+    if (existing.userId !== userId) return forbidden();
+
+    await prisma.creatorProfile.delete({ where: { id } });
+
+    return NextResponse.json({ message: "Профиль удалён" });
+  } catch (err) {
+    console.error("[DELETE /api/creators/[id]]", err);
+    return serverError();
+  }
+}

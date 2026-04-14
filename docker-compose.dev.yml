@@ -1,0 +1,26 @@
+version: "3.9"
+
+# Только БД в Docker — Next.js запускается локально через `npm run dev`
+# Запуск: docker-compose -f docker-compose.dev.yml up -d
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: viralwall_db_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: viralwall
+      POSTGRES_PASSWORD: viralwall_secret
+      POSTGRES_DB: viralwall
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U viralwall -d viralwall"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_dev_data:

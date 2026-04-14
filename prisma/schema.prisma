@@ -1,0 +1,952 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────
+
+enum Platform {
+  TikTok
+  Instagram
+  YouTube
+}
+
+enum ContentCategory {
+  KinoNarezki
+  Memy
+  Obzory
+  Podkasty
+  Geympley
+  MuzykaAtmosfera
+  Avto
+  Krasota
+  Sport
+  Multfilmy
+}
+
+enum City {
+  Almaty
+  Astana
+  Shymkent
+  Karaganda
+  Aktau
+  Pavlodar
+  AllCities
+}
+
+enum BudgetType {
+  fixed
+  per_views
+  revenue
+  negotiable
+}
+
+enum AdStatus {
+  draft
+  pending_payment
+  active
+  paused
+  expired
+  archived
+  deleted
+  budget_exhausted
+  cancelled
+}
+
+enum PaymentMode {
+  direct
+  escrow
+}
+
+enum SubmissionStatus {
+  submitted
+  approved
+  rejected
+  rejected_system
+}
+
+enum RejectionReason {
+  no_brand
+  no_banner
+  fake_stats
+  boosted_views
+  wrong_hashtags
+  video_unavailable
+  other
+}
+
+enum EscrowStatus {
+  active
+  exhausted
+  refunded
+  cancelled
+}
+
+enum WithdrawalStatus {
+  pending
+  processing
+  completed
+  failed
+}
+
+enum TransactionType {
+  earning         // выплата креатору за видео
+  withdrawal      // вывод на карту/Kaspi
+  refund          // возврат при неудачном выводе
+
+  topup           // пополнение кошелька через провайдера
+  ad_publication  // списание за публикацию объявления
+  boost           // списание за буст
+  escrow_deposit  // списание при создании эскроу-задания
+  escrow_topup    // списание при пополнении бюджета задания
+}
+
+enum Availability {
+  available
+  busy
+  partially_available
+}
+
+enum BoostType {
+  rise
+  vip
+  premium
+}
+
+enum PaymentStatus {
+  pending
+  success
+  failed
+}
+
+enum PaymentMethod {
+  kaspi
+  halyk
+  card
+  wallet  // списание с внутреннего кошелька (без редиректа)
+}
+
+enum DiscountType {
+  percent
+  fixed_amount
+}
+
+enum PaymentType {
+  ad_publication
+  ad_boost
+  creator_publication
+  creator_boost       // буст профиля креатора
+  escrow_deposit
+  escrow_topup
+  wallet_topup  // пополнение кошелька
+}
+
+enum ReportTargetType {
+  ad
+  creator
+  customer
+  review
+}
+
+enum ReviewTargetType {
+  creator_profile
+  // customer — фаза 2
+}
+
+enum Role {
+  user
+  admin
+}
+
+enum ContentStatus {
+  pending_video    // ждёт ссылку на видео (48h)
+  video_timed_out  // 48h истекло — заявка отменена
+  pending_review   // видео прикреплено, ждёт одобрения заказчика (72h)
+  content_approved // одобрено заказчиком (или авто-одобрено по истечению 72h)
+  content_rejected // отклонено заказчиком
+}
+
+// ─────────────────────────────────────────
+// CATEGORY DIMENSIONS — справочники категорий (DB-driven)
+// ─────────────────────────────────────────
+
+/// Формат видео-контента (нарезки из фильмов, мемы, блог, стримы и т.д.)
+model VideoFormat {
+  id          String   @id @default(cuid())
+  key         String   @unique          // "FilmClips", "Memes", "Blog"...
+  label       String                    // "Нарезки из фильмов"
+  description String?                   // Подробное описание
+  icon        String?                   // Иконка/эмодзи
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ads              Ad[]
+  creatorProfiles  CreatorProfileVideoFormat[]
+  portfolioItems   PortfolioItem[]
+
+  @@map("video_formats")
+}
+
+/// Формат рекламной интеграции (хук, баннер, бегущая строка и т.д.)
+model AdFormat {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  label       String
+  description String?
+  icon        String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ads Ad[]
+
+  @@map("ad_formats")
+}
+
+/// Тип рекламируемого объекта (товар, услуга, акция и т.д.)
+model AdSubject {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  label       String
+  description String?
+  icon        String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ads Ad[]
+
+  @@map("ad_subjects")
+}
+
+/// M2M: CreatorProfile ↔ VideoFormat
+model CreatorProfileVideoFormat {
+  creatorProfileId String
+  videoFormatId    String
+
+  creatorProfile CreatorProfile @relation(fields: [creatorProfileId], references: [id], onDelete: Cascade)
+  videoFormat    VideoFormat    @relation(fields: [videoFormatId], references: [id], onDelete: Cascade)
+
+  @@id([creatorProfileId, videoFormatId])
+  @@map("creator_profile_video_formats")
+}
+
+// ─────────────────────────────────────────
+// USER — базовый аккаунт
+// ─────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  phone     String?  @unique
+  name      String
+  avatar      String?
+  avatarColor String?
+  password    String?
+  googleId  String?  @unique
+  role      Role     @default(user)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Email verification
+  emailVerified              Boolean   @default(false)
+  emailVerificationCode      String?   // SHA-256 хеш 6-значного кода
+  emailVerificationExpires   DateTime?
+
+  // Moderation
+  blocked   Boolean   @default(false)
+  blockedAt DateTime?
+  isDeleted Boolean   @default(false)
+
+  // Password reset
+  passwordResetToken   String?   @unique
+  passwordResetExpires DateTime?
+
+  // Связи
+  advertiserProfile    AdvertiserProfile?
+  ads                  Ad[]
+  creatorProfiles      CreatorProfile[]
+  payments             PaymentSession[]
+  notificationSettings NotificationSettings?
+  sessions             Session[]
+  reportsSubmitted     Report[]              @relation("ReportSubmitter")
+  promoUsages          PromoCodeUsage[]
+  reviewsWritten       Review[]              @relation("ReviewAuthor")
+  contactInteractions  ContactInteraction[]
+
+  // Эскроу-связи
+  applications         TaskApplication[]
+  submissions          VideoSubmission[]
+  appeals              Appeal[]
+  creatorBalance       CreatorBalance?
+  withdrawals          WithdrawalRequest[]
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────
+// ADVERTISER PROFILE — профиль рекламодателя
+// ─────────────────────────────────────────
+
+model AdvertiserProfile {
+  id          String  @id @default(cuid())
+  userId      String  @unique
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  displayName String?
+  companyName String?
+  companyType String?
+  city        String?
+  description String?
+  telegram    String?
+  whatsapp    String?
+  website     String?
+  verified    Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("advertiser_profiles")
+}
+
+// ─────────────────────────────────────────
+// AD — объявление (задание для креатора)
+// ─────────────────────────────────────────
+
+model Ad {
+  id          String   @id @default(cuid())
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // Основные поля
+  companyName   String?
+  title         String
+  description   String
+  platform      Platform
+  city          City
+  category      ContentCategory
+  status        AdStatus @default(draft)
+
+  // Новые категорийные измерения (DB-driven справочники)
+  videoFormatId String?
+  adFormatId    String?
+  adSubjectId   String?
+  videoFormat   VideoFormat? @relation(fields: [videoFormatId], references: [id])
+  adFormat      AdFormat?    @relation(fields: [adFormatId], references: [id])
+  adSubject     AdSubject?   @relation(fields: [adSubjectId], references: [id])
+
+  // Бюджет
+  budgetType    BudgetType
+  budgetFrom    Float?
+  budgetTo      Float?
+  budgetDetails String?
+
+  // Эскроу-режим (только для paymentMode=escrow)
+  paymentMode        PaymentMode @default(direct)
+  rpm                Float?          // ₸ за 1000 просмотров
+  minViews           Int?            // мин. просмотров для выплаты
+  maxViewsPerCreator Int?            // кэп просмотров на 1 креатора
+  totalBudget        Float?          // реальный бюджет в ₸
+  submissionDeadline DateTime?       // дедлайн подачи видео
+
+  // Медиа
+  images        String[] @default([])
+
+  // Контакты
+  contactTelegram String?
+  contactWhatsapp String?
+  contactPhone    String?
+  contactEmail    String?
+
+  // Статистика
+  viewCount         Int     @default(0)
+  contactClickCount Int     @default(0)
+  featured          Boolean @default(false)
+
+  // Ранжирование по бусту
+  // Обновляется при публикации (= publishedAt) и периодически кроном при активном бусте.
+  // premium: каждый 1ч, vip: каждые 3ч, rise: каждые 6ч.
+  // Лента сортируется по raisedAt DESC — бустованные объявления всплывают чаще.
+  raisedAt  DateTime?
+
+  // Даты
+  publishedAt DateTime?
+  expiresAt   DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Связи
+  boosts        AdBoost[]
+  payments      PaymentSession[]
+  escrowAccount EscrowAccount?
+  applications  TaskApplication[]
+  submissions   VideoSubmission[]
+
+  @@index([status, raisedAt])
+  @@map("ads")
+}
+
+// ─────────────────────────────────────────
+// AD BOOST — активный буст объявления
+// ─────────────────────────────────────────
+
+model AdBoost {
+  id          String    @id @default(cuid())
+  adId        String
+  ad          Ad        @relation(fields: [adId], references: [id], onDelete: Cascade)
+  boostType   BoostType
+  activatedAt DateTime  @default(now())
+  expiresAt   DateTime
+
+  @@map("ad_boosts")
+}
+
+// ─────────────────────────────────────────
+// CREATOR BOOST — активный буст профиля креатора
+// ─────────────────────────────────────────
+
+model CreatorBoost {
+  id               String         @id @default(cuid())
+  creatorProfileId String
+  profile          CreatorProfile @relation(fields: [creatorProfileId], references: [id], onDelete: Cascade)
+  boostType        BoostType
+  activatedAt      DateTime       @default(now())
+  expiresAt        DateTime
+
+  @@map("creator_boosts")
+}
+
+// ─────────────────────────────────────────
+// CREATOR PROFILE — анкета-портфолио креатора
+// ─────────────────────────────────────────
+
+model CreatorProfile {
+  id          String @id @default(cuid())
+  userId      String
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Основные поля
+  title       String
+  isPublished Boolean @default(false)
+  fullName    String
+  username    String?
+  avatar      String?
+  bio         String?
+  city        City
+  age         Int?
+  availability Availability @default(available)
+  verified    Boolean       @default(false)
+  featured    Boolean       @default(false)
+
+  // Верификация (workflow)
+  verificationStatus      String    @default("none") // none | pending | approved | rejected
+  verificationRequestedAt DateTime?
+  verificationNote        String?   // Комментарий админа при одобрении/отклонении
+
+  // Категории контента (массив)
+  contentCategories ContentCategory[]
+
+  // Медиа (скриншоты статистики, примеры работ и т.д.)
+  screenshots String[] @default([])
+
+  // Ценообразование
+  minimumRate Float    @default(0)
+  negotiable  Boolean  @default(true)
+  currency    String   @default("KZT")
+
+  // Контакты
+  contactTelegram String?
+  contactWhatsapp String?
+  contactPhone    String?
+  contactEmail    String?
+
+  // Рейтинг (агрегированные поля — пересчитываются при создании/удалении отзыва)
+  averageRating Float @default(0)
+  reviewCount   Int   @default(0)
+
+  // Статистика
+  contactClickCount Int @default(0)
+
+  // Буст (поднятие в каталоге)
+  raisedAt  DateTime?
+
+  // Даты
+  lastActiveAt DateTime @default(now())
+  publishedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Связи
+  platforms          CreatorPlatform[]
+  portfolio          PortfolioItem[]
+  priceItems         CreatorPriceItem[]
+  payments           PaymentSession[]
+  reviews            Review[]
+  contactInteractions ContactInteraction[]
+  videoFormats       CreatorProfileVideoFormat[]
+  boosts             CreatorBoost[]
+
+  @@index([isPublished, raisedAt])
+  @@map("creator_profiles")
+}
+
+// ─────────────────────────────────────────
+// CREATOR PRICE ITEM — позиция прайс-листа
+// ─────────────────────────────────────────
+
+model CreatorPriceItem {
+  id        String @id @default(cuid())
+  profileId String
+  profile   CreatorProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  label     String  // Например: "TikTok-ролик до 1 мин"
+  price     Float   // Цена в ₸
+  sortOrder Int     @default(0)
+
+  @@map("creator_price_items")
+}
+
+// ─────────────────────────────────────────
+// CREATOR PLATFORM — платформа в анкете
+// ─────────────────────────────────────────
+
+model CreatorPlatform {
+  id        String  @id @default(cuid())
+  profileId String
+  profile   CreatorProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  name      Platform
+  handle    String
+  url       String
+  followers Int?
+
+  @@map("creator_platforms")
+}
+
+// ─────────────────────────────────────────
+// PORTFOLIO ITEM — элемент портфолио
+// ─────────────────────────────────────────
+
+model PortfolioItem {
+  id          String  @id @default(cuid())
+  profileId   String
+  profile     CreatorProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  platform    Platform
+  thumbnail   String
+  videoUrl    String
+  category    ContentCategory
+  description String?
+  views       Int?
+
+  // Новое категорийное измерение
+  videoFormatId String?
+  videoFormat   VideoFormat? @relation(fields: [videoFormatId], references: [id])
+
+  createdAt   DateTime @default(now())
+
+  @@map("portfolio_items")
+}
+
+// ─────────────────────────────────────────
+// PAYMENT SESSION — транзакция оплаты
+// ─────────────────────────────────────────
+
+model PaymentSession {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type   PaymentType
+  amount Float
+  method PaymentMethod
+  status PaymentStatus @default(pending)
+
+  // Опциональные FK в зависимости от типа
+  adId            String?
+  ad              Ad?             @relation(fields: [adId], references: [id])
+  creatorProfileId String?
+  creatorProfile  CreatorProfile? @relation(fields: [creatorProfileId], references: [id])
+
+  // Для буста
+  boostType BoostType?
+
+  // История скидок (промокоды)
+  originalAmount Float?    // Цена до скидки (null если промокода не было)
+  discountAmount Float?    // Размер скидки в ₸ (0 если промокода не было)
+  promoCodeId    String?
+  promoCode      PromoCode?      @relation(fields: [promoCodeId], references: [id])
+  promoUsage     PromoCodeUsage?
+
+  // Внешний ID от платёжного провайдера
+  externalId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("payment_sessions")
+}
+
+// ─────────────────────────────────────────
+// NOTIFICATION SETTINGS — настройки уведомлений
+// ─────────────────────────────────────────
+
+model NotificationSettings {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  emailReplies  Boolean @default(true)
+  emailTasks    Boolean @default(true)
+  emailNews     Boolean @default(false)
+  smsImportant  Boolean @default(true)
+  pushMessages  Boolean @default(false)
+
+  updatedAt DateTime @updatedAt
+
+  @@map("notification_settings")
+}
+
+// ─────────────────────────────────────────
+// SESSION — активные сессии пользователя
+// ─────────────────────────────────────────
+
+model Session {
+  id           String  @id @default(cuid())
+  userId       String
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  token        String  @unique // refresh token hash
+  device       String?
+  os           String?
+  browser      String?
+  ip           String?
+  isCurrent    Boolean @default(false)
+
+  createdAt    DateTime @default(now())
+  lastActiveAt DateTime @default(now())
+  expiresAt    DateTime
+
+  @@map("sessions")
+}
+
+// ─────────────────────────────────────────
+// PROMO CODE — промокоды со скидками
+// ─────────────────────────────────────────
+
+model PromoCode {
+  id            String       @id @default(cuid())
+  code          String       @unique
+
+  // Тип и размер скидки
+  discountType  DiscountType          // percent | fixed_amount
+  discountValue Float                 // 30 (%) или 500 (₸)
+
+  // Лимиты использования
+  maxUses       Int?                  // null = безлимитно
+  usedCount     Int          @default(0)
+
+  // Срок действия
+  expiresAt     DateTime?             // null = бессрочно
+
+  // На что распространяется
+  applicableTo  PaymentType[]         // ["ad_publication", "ad_boost", "creator_publication"]
+
+  // Статус
+  isActive      Boolean      @default(true)
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  // Связи
+  usages        PromoCodeUsage[]
+  payments      PaymentSession[]
+
+  @@map("promo_codes")
+}
+
+// ─────────────────────────────────────────
+// PROMO CODE USAGE — история применения промокодов
+// ─────────────────────────────────────────
+
+model PromoCodeUsage {
+  id             String        @id @default(cuid())
+  promoCodeId    String
+  promoCode      PromoCode     @relation(fields: [promoCodeId], references: [id])
+
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  paymentId      String        @unique
+  payment        PaymentSession @relation(fields: [paymentId], references: [id])
+
+  originalAmount Float         // Цена до скидки
+  discountAmount Float         // Размер скидки в ₸
+  finalAmount    Float         // Итоговая цена
+
+  createdAt      DateTime      @default(now())
+
+  @@map("promo_code_usages")
+}
+
+// ─────────────────────────────────────────
+// REVIEW — отзыв на CreatorProfile
+// ─────────────────────────────────────────
+
+model Review {
+  id          String           @id @default(cuid())
+  reviewerId  String
+  reviewer    User             @relation("ReviewAuthor", fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  targetType  ReviewTargetType @default(creator_profile)
+  targetId    String           // CreatorProfile.id (или User.id для customer в фазе 2)
+
+  // Связь с CreatorProfile (null для targetType=customer в фазе 2)
+  creatorProfileId String?
+  creatorProfile   CreatorProfile? @relation(fields: [creatorProfileId], references: [id], onDelete: Cascade)
+
+  rating      Int              // 1-5
+  comment     String           // текст отзыва
+  reply       String?          // ответ владельца профиля (один ответ)
+  repliedAt   DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([reviewerId, targetType, targetId])
+  @@map("reviews")
+}
+
+// ─────────────────────────────────────────
+// CONTACT INTERACTION — клик «Связаться» на CreatorProfile
+// ─────────────────────────────────────────
+
+model ContactInteraction {
+  id               String         @id @default(cuid())
+  userId           String
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  creatorProfileId String
+  creatorProfile   CreatorProfile @relation(fields: [creatorProfileId], references: [id], onDelete: Cascade)
+
+  createdAt        DateTime @default(now())
+
+  @@unique([userId, creatorProfileId])
+  @@map("contact_interactions")
+}
+
+// ─────────────────────────────────────────
+// REPORT — жалобы
+// ─────────────────────────────────────────
+
+model Report {
+  id           String           @id @default(cuid())
+  submitterId  String
+  submitter    User             @relation("ReportSubmitter", fields: [submitterId], references: [id], onDelete: Cascade)
+
+  targetType   ReportTargetType
+  targetId     String
+  reason       String
+  resolved     Boolean          @default(false)
+
+  createdAt    DateTime @default(now())
+
+  @@map("reports")
+}
+
+// ─────────────────────────────────────────
+// ESCROW ACCOUNT — эскроу-счёт задания
+// ─────────────────────────────────────────
+
+model EscrowAccount {
+  id             String       @id @default(cuid())
+  adId           String       @unique
+  ad             Ad           @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  initialAmount  Float        // сколько заморозил заказчик
+  spentAmount    Float        @default(0) // сколько выплачено
+  reservedAmount Float        @default(0) // зарезервировано на модерации
+  available      Float        // остаток = initial - spent - reserved
+  status         EscrowStatus @default(active)
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("escrow_accounts")
+}
+
+// ─────────────────────────────────────────
+// TASK APPLICATION — креатор взял задание
+// ─────────────────────────────────────────
+
+model TaskApplication {
+  id        String   @id @default(cuid())
+  adId      String
+  ad        Ad       @relation(fields: [adId], references: [id], onDelete: Cascade)
+  creatorId String
+  creator   User     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  // ── Новый флоу подтверждения контента ─────
+  contentStatus         ContentStatus @default(pending_video)
+  videoDeadline         DateTime?     // createdAt + 48h — дедлайн прикрепить видео
+  videoUrl              String?       // ссылка на опубликованное видео
+  videoSubmittedAt      DateTime?
+  contentReviewDeadline DateTime?     // videoSubmittedAt + 72h — дедлайн заказчику
+  contentReviewedAt     DateTime?     // когда заказчик принял решение
+  contentRejectionNote  String?       // причина отклонения от заказчика
+  // ──────────────────────────────────────────
+
+  submission VideoSubmission?
+
+  @@unique([adId, creatorId])
+  @@map("task_applications")
+}
+
+// ─────────────────────────────────────────
+// VIDEO SUBMISSION — подача видео на проверку
+// ─────────────────────────────────────────
+
+model VideoSubmission {
+  id              String   @id @default(cuid())
+  applicationId   String   @unique
+  application     TaskApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  adId            String
+  ad              Ad       @relation(fields: [adId], references: [id], onDelete: Cascade)
+  creatorId       String
+  creator         User     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  // Данные от креатора
+  videoUrl        String   // ссылка на видео
+  screenshotUrl   String   // скриншот статистики
+  claimedViews    Int      // заявленные просмотры
+
+  // Данные от модератора
+  approvedViews     Int?
+  rejectionReason   RejectionReason?
+  rejectionComment  String?
+  moderatorId       String?
+  moderatedAt       DateTime?
+
+  // Финансы
+  reservedAmount    Float?  // зарезервировано при подаче
+  payoutAmount      Float?  // выплата креатору (после комиссии)
+  commissionAmount  Float?  // комиссия платформы
+  grossAmount       Float?  // полная сумма (до комиссии)
+
+  status            SubmissionStatus @default(submitted)
+  submittedAt       DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // SLA
+  slaDeadline       DateTime  // submittedAt + 24ч
+  escalated         Boolean   @default(false)
+
+  // Апелляция
+  appeal            Appeal?
+
+  @@map("video_submissions")
+}
+
+// ─────────────────────────────────────────
+// APPEAL — апелляция на отклонённую подачу
+// ─────────────────────────────────────────
+
+model Appeal {
+  id            String   @id @default(cuid())
+  submissionId  String   @unique
+  submission    VideoSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  creatorId     String
+  creator       User     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  reason        String   // текст апелляции
+  status        String   @default("pending") // pending | approved | rejected
+  reviewedBy    String?
+  reviewComment String?
+  deadline      DateTime // submissionModerationDate + 48ч
+
+  createdAt     DateTime @default(now())
+  resolvedAt    DateTime?
+
+  @@map("appeals")
+}
+
+// ─────────────────────────────────────────
+// CREATOR BALANCE — кошелёк креатора
+// ─────────────────────────────────────────
+
+model CreatorBalance {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  balance        Float    @default(0)  // текущий доступный баланс
+  totalEarned    Float    @default(0)  // всего начислено (earning + topup)
+  totalWithdrawn Float    @default(0)  // всего выведено (withdrawal)
+  totalTopUp     Float    @default(0)  // всего пополнено через провайдера
+  totalSpent     Float    @default(0)  // всего потрачено на рекламу (publication+boost+escrow)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  transactions   BalanceTransaction[]
+  withdrawals    WithdrawalRequest[]
+
+  @@map("creator_balances")
+}
+
+// ─────────────────────────────────────────
+// BALANCE TRANSACTION — движение средств
+// ─────────────────────────────────────────
+
+model BalanceTransaction {
+  id           String          @id @default(cuid())
+  balanceId    String
+  balance      CreatorBalance  @relation(fields: [balanceId], references: [id], onDelete: Cascade)
+
+  type         TransactionType
+  amount       Float           // положительное = приход, отрицательное = расход
+  description  String          // "Задание: {title} — {views} просмотров"
+  submissionId String?         // привязка к подаче (для earning)
+  withdrawalId String?         // привязка к выводу (для withdrawal)
+  adId         String?         // привязка к объявлению (для ad_publication, boost, escrow_*)
+  paymentId    String?         // привязка к PaymentSession (для topup)
+
+  createdAt    DateTime @default(now())
+
+  @@map("balance_transactions")
+}
+
+// ─────────────────────────────────────────
+// WITHDRAWAL REQUEST — запрос на вывод средств
+// ─────────────────────────────────────────
+
+model WithdrawalRequest {
+  id          String           @id @default(cuid())
+  balanceId   String
+  balance     CreatorBalance   @relation(fields: [balanceId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  amount      Float
+  method      PaymentMethod    // kaspi, halyk, card
+  details     String           // номер карты/Kaspi
+  status      WithdrawalStatus @default(pending)
+
+  processedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("withdrawal_requests")
+}
