@@ -1,30 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
-import { signAccessToken, signRefreshToken } from "@/lib/auth";
+import { signAccessToken, signRefreshToken, badRequest, serverError } from "@/lib/auth";
 import { setAuthCookies } from "@/lib/cookies";
 import { createSession } from "@/lib/sessions";
 import { randomAvatarGradient } from "@/lib/utils";
 
 const AUTH_MAX_AGE_SEC = 5 * 60; // окно валидности auth_date — 5 минут
 
-interface TelegramAuthData {
-  id: string;
-  first_name?: string;
-  last_name?: string;
-  username?: string;
-  photo_url?: string;
-  auth_date: string;
-  hash: string;
-}
-
 /**
- * Проверяет hash от Telegram.
+ * POST /api/auth/telegram/callback
  *
- * Алгоритм (https://core.telegram.org/widgets/login#checking-authorization):
- *   data_check_string = поля "<key>=<value>" отсортированные по key, объединённые '\n' (без hash)
- *   secret_key        = SHA256(bot_token)   — raw bytes
- *   expected_hash     = HMAC_SHA256(secret_key, data_check_string) hex
+ * Принимает JSON-данные авторизации от Telegram, распарсенные клиентом из
+ * URL-фрагмента `#tgAuthResult=<base64>`:
+ *   { id, first_name, last_name?, username?, photo_url?, auth_date, hash }
+ *
+ * Валидирует hash через HMAC-SHA256 с bot_token, upsert'ит пользователя
+ * по telegramId и выдаёт JWT cookies.
  */
 function verifyTelegramHash(
   data: Record<string, string>,
@@ -44,59 +36,73 @@ function verifyTelegramHash(
     .update(dataCheckString)
     .digest("hex");
 
-  // timing-safe сравнение
   const a = Buffer.from(expectedHash, "hex");
   const b = Buffer.from(hash, "hex");
   if (a.length !== b.length) return false;
   return crypto.timingSafeEqual(a, b);
 }
 
-export async function GET(req: NextRequest) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3001";
+export async function POST(req: NextRequest) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
-
   if (!botToken) {
-    return NextResponse.redirect(`${appUrl}/auth/login?error=telegram_not_configured`);
+    return badRequest("Telegram OAuth не настроен");
   }
 
-  // Собираем все query-параметры в плоский объект (все значения — строки)
-  const { searchParams } = new URL(req.url);
-  const params: Record<string, string> = {};
-  searchParams.forEach((value, key) => {
-    params[key] = value;
-  });
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return badRequest("Некорректное тело запроса");
+  }
 
-  const { id, auth_date, hash } = params as Partial<TelegramAuthData>;
+  if (!body || typeof body !== "object") {
+    return badRequest("Некорректное тело запроса");
+  }
+
+  // Приводим все значения к строкам для hash-проверки
+  const data: Record<string, string> = {};
+  for (const [key, value] of Object.entries(body as Record<string, unknown>)) {
+    if (value === undefined || value === null) continue;
+    data[key] = String(value);
+  }
+
+  const { id, auth_date, hash } = data;
 
   if (!id || !auth_date || !hash) {
-    return NextResponse.redirect(`${appUrl}/auth/login?error=telegram_missing_fields`);
+    return badRequest("Отсутствуют обязательные поля Telegram");
   }
 
   // 1. Проверка срока auth_date (anti-replay)
   const authDateNum = Number(auth_date);
   if (!Number.isFinite(authDateNum)) {
-    return NextResponse.redirect(`${appUrl}/auth/login?error=telegram_invalid_auth_date`);
+    return badRequest("Некорректный auth_date");
   }
   const nowSec = Math.floor(Date.now() / 1000);
   if (nowSec - authDateNum > AUTH_MAX_AGE_SEC) {
-    return NextResponse.redirect(`${appUrl}/auth/login?error=telegram_expired`);
+    return NextResponse.json(
+      { error: "Срок авторизации истёк, попробуйте снова" },
+      { status: 401 },
+    );
   }
 
   // 2. Проверка hash
-  if (!verifyTelegramHash(params, botToken)) {
-    return NextResponse.redirect(`${appUrl}/auth/login?error=telegram_invalid_hash`);
+  if (!verifyTelegramHash(data, botToken)) {
+    return NextResponse.json(
+      { error: "Неверная подпись Telegram" },
+      { status: 401 },
+    );
   }
 
   try {
     const telegramId = String(id);
-    const telegramUsername = params.username ?? null;
+    const telegramUsername = data.username ?? null;
     const name =
-      [params.first_name, params.last_name].filter(Boolean).join(" ").trim() ||
-      params.username ||
+      [data.first_name, data.last_name].filter(Boolean).join(" ").trim() ||
+      data.username ||
       "Telegram User";
-    const avatar = params.photo_url ?? null;
+    const avatar = data.photo_url ?? null;
 
-    // 3. Upsert пользователя по telegramId
+    // 3. Upsert по telegramId
     let user = await prisma.user.findUnique({
       where: { telegramId },
       select: {
@@ -115,10 +121,16 @@ export async function GET(req: NextRequest) {
 
     if (user) {
       if (user.blocked) {
-        return NextResponse.redirect(`${appUrl}/auth/login?error=account_blocked`);
+        return NextResponse.json(
+          { error: "Аккаунт заблокирован. Обратитесь в поддержку." },
+          { status: 403 },
+        );
       }
       if (user.isDeleted) {
-        return NextResponse.redirect(`${appUrl}/auth/login?error=account_deleted`);
+        return NextResponse.json(
+          { error: "Аккаунт удалён." },
+          { status: 403 },
+        );
       }
 
       user = await prisma.user.update({
@@ -152,7 +164,6 @@ export async function GET(req: NextRequest) {
           telegramId,
           telegramUsername,
           password: null,
-          // Telegram сам верифицирует пользователя, email у него просто нет
           emailVerified: true,
         },
         select: {
@@ -170,21 +181,29 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // 4. JWT токены
+    // 4. JWT + сессия
     const [accessToken, refreshToken] = await Promise.all([
       signAccessToken({ sub: user.id, email: user.email, role: user.role }),
       signRefreshToken({ sub: user.id, email: user.email, role: user.role }),
     ]);
 
-    // 5. Сессия
     await createSession(user.id, refreshToken, req);
 
-    // 6. Редирект с cookies
-    const response = NextResponse.redirect(`${appUrl}/auth/telegram/success`);
+    const response = NextResponse.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        avatar: user.avatar,
+        role: user.role,
+      },
+    });
+
     setAuthCookies(response, accessToken, refreshToken);
     return response;
   } catch (err) {
     console.error("[Telegram OAuth callback] Error:", err);
-    return NextResponse.redirect(`${appUrl}/auth/login?error=telegram_server_error`);
+    return serverError();
   }
 }

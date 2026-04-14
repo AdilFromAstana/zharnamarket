@@ -16,7 +16,7 @@ import { NextResponse } from "next/server";
  */
 export async function GET() {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3001";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
   if (!botToken) {
     return NextResponse.json(
@@ -34,7 +34,10 @@ export async function GET() {
     );
   }
 
-  const returnTo = `${appUrl}/api/auth/telegram/callback`;
+  // Возвращаем пользователя на клиентскую страницу, т.к. Telegram отдаёт
+  // данные авторизации в URL-фрагменте (#tgAuthResult=<base64>), который
+  // не виден серверу. Страница распарсит фрагмент и отправит POST на API.
+  const returnTo = `${appUrl}/auth/telegram/callback`;
 
   const params = new URLSearchParams({
     bot_id: botId,
