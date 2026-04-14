@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button, InputNumber, Radio, Alert } from "antd";
@@ -25,6 +25,14 @@ const METHOD_LABELS: Record<PaymentMethod, string> = {
 };
 
 export default function TopupPage() {
+  return (
+    <Suspense fallback={<div className="max-w-md mx-auto py-8 px-4" />}>
+      <TopupContent />
+    </Suspense>
+  );
+}
+
+function TopupContent() {
   useRequireAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
