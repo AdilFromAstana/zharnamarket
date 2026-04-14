@@ -1,5 +1,7 @@
 import PublicLayout from "@/components/layout/PublicLayout";
 import AdsListClient from "./AdsListClient";
+
+export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
 import { mapPrismaAdToAd } from "@/lib/mappers/ad";
 import { distributeBoostedByTier, countBoostedBeforePage } from "@/lib/interleave-boosts";

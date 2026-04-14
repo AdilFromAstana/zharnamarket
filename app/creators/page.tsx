@@ -1,5 +1,7 @@
 import PublicLayout from "@/components/layout/PublicLayout";
 import CreatorsListClient from "./CreatorsListClient";
+
+export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
 import { mapCreatorFromApi } from "@/lib/mappers/creator";
 import { distributeBoostedByTier, countBoostedBeforePage } from "@/lib/interleave-boosts";

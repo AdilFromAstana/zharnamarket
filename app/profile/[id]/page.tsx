@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import PublicLayout from "@/components/layout/PublicLayout";
 import ProfileClient from "./ProfileClient";
+
+export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
 
 interface ProfilePageProps {

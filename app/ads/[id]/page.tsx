@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import PublicLayout from "@/components/layout/PublicLayout";
 import AdDetailClient from "./AdDetailClient";
+
+export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
 import { mapPrismaAdToAd } from "@/lib/mappers/ad";
 import type { Ad } from "@/lib/types/ad";

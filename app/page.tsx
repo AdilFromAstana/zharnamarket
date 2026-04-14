@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Button } from "antd";
 import PublicLayout from "@/components/layout/PublicLayout";
+
+export const dynamic = "force-dynamic";
 import AdCard from "@/components/ads/AdCard";
 import { mapPrismaAdToAd } from "@/lib/mappers/ad";
 import { prisma } from "@/lib/prisma";
