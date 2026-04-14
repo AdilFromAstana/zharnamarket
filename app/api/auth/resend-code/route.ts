@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     });
 
     // Всегда 200 — не раскрываем наличие email
-    if (!user || user.emailVerified) {
+    if (!user || user.emailVerified || !user.email) {
       return NextResponse.json({ sent: true });
     }
 

@@ -71,9 +71,17 @@ export async function POST(req: NextRequest) {
 
     // Проверяем пароль (OAuth-пользователи не имеют пароля)
     if (!user.password) {
+      const provider = user.googleId
+        ? "Google"
+        : user.telegramId
+          ? "Telegram"
+          : null;
+      const message = provider
+        ? `Этот аккаунт создан через ${provider}. Используйте кнопку «Войти через ${provider}».`
+        : "Неверный логин или пароль";
       return NextResponse.json(
-        { error: "Этот аккаунт создан через Google. Используйте кнопку «Войти через Google»." },
-        { status: 400 },
+        { error: message },
+        { status: provider ? 400 : 401 },
       );
     }
 
@@ -99,8 +107,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Проверяем верификацию email
-    if (!user.emailVerified) {
+    // Проверяем верификацию email (только для аккаунтов с email)
+    if (!user.emailVerified && user.email) {
       // Генерируем новый код и отправляем
       await generateAndSendCode(user.id, user.email);
       return NextResponse.json(

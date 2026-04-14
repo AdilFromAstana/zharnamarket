@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
     });
 
     // Генерируем и отправляем код подтверждения на email
-    await generateAndSendCode(user.id, user.email);
+    await generateAndSendCode(user.id, user.email ?? emailLower);
 
     // НЕ выдаём JWT — пользователь должен подтвердить email
     return NextResponse.json(

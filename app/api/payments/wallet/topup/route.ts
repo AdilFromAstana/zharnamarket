@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
       description: `Пополнение кошелька: ${user.name}`,
       orderId: session.id,
       method: method as "kaspi" | "halyk" | "card",
-      userEmail: user.email,
+      userEmail: user.email ?? "",
       userPhone: user.phone ?? undefined,
     });
 

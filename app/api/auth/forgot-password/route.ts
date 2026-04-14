@@ -55,8 +55,8 @@ export async function POST(req: NextRequest) {
       select: { id: true, email: true, password: true },
     });
 
-    // Если пользователь не найден или у него нет пароля (OAuth) — молча возвращаем OK
-    if (!user || !user.password) {
+    // Если пользователь не найден, без пароля (OAuth) или без email — молча возвращаем OK
+    if (!user || !user.password || !user.email) {
       return successResponse;
     }
 

@@ -16,7 +16,7 @@ const SECRET = new TextEncoder().encode(jwtSecret);
 
 export interface JWTPayload {
   sub: string; // userId
-  email: string;
+  email: string | null;
   role: string; // "user" | "admin"
   iat?: number;
   exp?: number;
@@ -25,7 +25,7 @@ export interface JWTPayload {
 // ─── Создать access-токен (короткоживущий: 15m) ────────────────────────────
 export async function signAccessToken(payload: {
   sub: string;
-  email: string;
+  email: string | null;
   role: string;
 }): Promise<string> {
   return new SignJWT({ email: payload.email, role: payload.role })
@@ -39,7 +39,7 @@ export async function signAccessToken(payload: {
 // ─── Создать refresh-токен (долгоживущий: 30d) ────────────────────────────
 export async function signRefreshToken(payload: {
   sub: string;
-  email: string;
+  email: string | null;
   role: string;
 }): Promise<string> {
   return new SignJWT({ email: payload.email, role: payload.role })
@@ -56,7 +56,7 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
     const { payload } = await jwtVerify(token, SECRET);
     return {
       sub: payload.sub as string,
-      email: payload["email"] as string,
+      email: (payload["email"] as string | null | undefined) ?? null,
       role: (payload["role"] as string) ?? "user",
       iat: payload.iat,
       exp: payload.exp,
