@@ -1,8 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserId, unauthorized, badRequest, serverError } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { sendApplicationEmail } from "@/lib/email";
 
 const VIDEO_DEADLINE_HOURS = 48;
+
+async function notifyOwnerOfApplication(adId: string, creatorId: string) {
+  try {
+    const ad = await prisma.ad.findUnique({
+      where: { id: adId },
+      select: {
+        id: true,
+        title: true,
+        owner: {
+          select: {
+            email: true,
+            notificationSettings: { select: { emailReplies: true } },
+          },
+        },
+      },
+    });
+    if (!ad?.owner?.email) return;
+    if (ad.owner.notificationSettings && !ad.owner.notificationSettings.emailReplies) return;
+
+    const creator = await prisma.user.findUnique({
+      where: { id: creatorId },
+      select: { name: true },
+    });
+
+    await sendApplicationEmail(ad.owner.email, {
+      taskTitle: ad.title,
+      taskId: ad.id,
+      creatorName: creator?.name ?? "Креатор",
+    });
+  } catch (err) {
+    console.error("[notifyOwnerOfApplication]", err);
+  }
+}
 
 /**
  * POST /api/tasks/[id]/apply — Креатор откликается на escrow-задание.
@@ -73,6 +107,7 @@ export async function POST(
             creator: { select: { id: true, name: true, avatar: true } },
           },
         });
+        notifyOwnerOfApplication(adId, userId);
         return NextResponse.json(application, { status: 200 });
       }
       return badRequest("Вы уже откликнулись на это задание");
@@ -89,6 +124,8 @@ export async function POST(
         creator: { select: { id: true, name: true, avatar: true } },
       },
     });
+
+    notifyOwnerOfApplication(adId, userId);
 
     return NextResponse.json(application, { status: 201 });
   } catch (err) {

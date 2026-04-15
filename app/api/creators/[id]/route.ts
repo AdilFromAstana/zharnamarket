@@ -10,13 +10,36 @@ import {
 import { prisma } from "@/lib/prisma";
 import {
   isValidEnum,
+  isValidFromArray,
   VALID_PLATFORMS,
-  VALID_CATEGORIES,
   VALID_AVAILABILITY,
   checkLength,
   LIMITS,
   validateContacts,
 } from "@/lib/validation";
+
+// Get valid category and city keys from database for validation
+async function getValidReferenceData() {
+  const [categories, cities] = await Promise.all([
+    prisma.category.findMany({
+      where: { isActive: true },
+      select: { key: true, label: true },
+    }),
+    prisma.city.findMany({
+      where: { isActive: true },
+      select: { key: true, label: true },
+    }),
+  ]);
+
+  return {
+    validCategoryKeys: categories.map((c) => c.key),
+    validCityKeys: cities.map((c) => c.key),
+    categoryLabelToKey: Object.fromEntries(
+      categories.map((c) => [c.label, c.key]),
+    ),
+    cityLabelToKey: Object.fromEntries(cities.map((c) => [c.label, c.key])),
+  };
+}
 
 function getCreatorInclude() {
   return {
@@ -25,6 +48,8 @@ function getCreatorInclude() {
     priceItems: { orderBy: { sortOrder: "asc" as const } },
     boosts: { where: { expiresAt: { gte: new Date() } } },
     user: { select: { id: true, name: true, email: true, avatarColor: true } },
+    city: { select: { id: true, key: true, label: true } },
+    categories: { select: { id: true, key: true, label: true } },
   };
 }
 
@@ -83,20 +108,55 @@ export async function PUT(
     } = body;
 
     if (!title?.trim()) return badRequest("Название обязательно");
-    const titleErr = checkLength(title?.trim(), "Название", LIMITS.title.min, LIMITS.title.max);
+    const titleErr = checkLength(
+      title?.trim(),
+      "Название",
+      LIMITS.title.min,
+      LIMITS.title.max,
+    );
     if (titleErr) return badRequest(titleErr);
 
     if (!fullName?.trim()) return badRequest("Имя обязательно");
-    const nameErr = checkLength(fullName?.trim(), "Имя", LIMITS.name.min, LIMITS.name.max);
+    const nameErr = checkLength(
+      fullName?.trim(),
+      "Имя",
+      LIMITS.name.min,
+      LIMITS.name.max,
+    );
     if (nameErr) return badRequest(nameErr);
 
-    // Enum validation
+    // Validate city/categories — accept EN key or RU label
+    const {
+      validCategoryKeys,
+      validCityKeys,
+      categoryLabelToKey,
+      cityLabelToKey,
+    } = await getValidReferenceData();
+
+    const resolveCityKey = (v: string): string | null => {
+      if (!v) return null;
+      if (validCityKeys.includes(v)) return v;
+      if (cityLabelToKey[v]) return cityLabelToKey[v];
+      return null;
+    };
+    const resolveCategoryKey = (v: string): string | null => {
+      if (!v) return null;
+      if (validCategoryKeys.includes(v)) return v;
+      if (categoryLabelToKey[v]) return categoryLabelToKey[v];
+      return null;
+    };
+
     if (contentCategories) {
       for (const cat of contentCategories) {
-        if (!isValidEnum(String(cat), VALID_CATEGORIES)) {
+        if (!resolveCategoryKey(cat)) {
           return badRequest(`Недопустимая категория: ${cat}`);
         }
       }
+    }
+
+    // City validation
+    if (city && !resolveCityKey(city)) {
+      return badRequest(`Недопустимый город: ${city}`);
     }
     if (platforms) {
       for (const p of platforms) {
@@ -105,14 +165,21 @@ export async function PUT(
         }
       }
     }
-    if (availability && !isValidEnum(String(availability), VALID_AVAILABILITY)) {
+    if (
+      availability &&
+      !isValidEnum(String(availability), VALID_AVAILABILITY)
+    ) {
       return badRequest("Недопустимое значение доступности");
     }
     if (bio) {
       const bioErr = checkLength(bio, "Биография", 0, LIMITS.bio.max);
       if (bioErr) return badRequest(bioErr);
     }
-    if (age !== undefined && age !== null && (typeof age !== "number" || age < 0 || age > 120)) {
+    if (
+      age !== undefined &&
+      age !== null &&
+      (typeof age !== "number" || age < 0 || age > 120)
+    ) {
       return badRequest("Возраст должен быть от 0 до 120");
     }
     const contactsErr = validateContacts(contacts);
@@ -132,20 +199,44 @@ export async function PUT(
           : []),
       ]);
 
+      // Resolve to DB IDs (accept EN key or RU label)
+      const cityKey = city ? resolveCityKey(city) : null;
+      const cityRecord = cityKey
+        ? await prisma.city.findUnique({ where: { key: cityKey } })
+        : null;
+
+      const categoryIds: string[] = [];
+      if (contentCategories) {
+        for (const catInput of contentCategories) {
+          const catKey = resolveCategoryKey(catInput);
+          if (catKey) {
+            const catRecord = await prisma.category.findUnique({
+              where: { key: catKey },
+            });
+            if (catRecord) {
+              categoryIds.push(catRecord.id);
+            }
+          }
+        }
+      }
+
       // Обновляем профиль + создаём новые связанные записи
       return tx.creatorProfile.update({
         where: { id },
         data: {
           title: title.trim(),
           fullName: fullName.trim(),
-          city,
+          cityId: cityRecord?.id,
           bio: bio ?? null,
           age: age ?? null,
           username: username ?? null,
           avatar: body.avatar !== undefined ? body.avatar : undefined,
-          screenshots: body.screenshots !== undefined ? body.screenshots : undefined,
+          screenshots:
+            body.screenshots !== undefined ? body.screenshots : undefined,
           availability: availability ?? "available",
-          contentCategories: contentCategories ?? [],
+          categories: {
+            set: categoryIds.map((id) => ({ id })),
+          },
           contactTelegram: contacts?.telegram ?? null,
           contactWhatsapp: contacts?.whatsapp ?? null,
           contactPhone: contacts?.phone ?? null,
@@ -154,12 +245,19 @@ export async function PUT(
           negotiable: pricing?.negotiable ?? true,
           // Платформы
           platforms: {
-            create: (platforms ?? []).map((p: { name: string; handle: string; url: string; followers?: number | null }) => ({
-              name: p.name,
-              handle: p.handle ?? "",
-              url: p.url ?? "",
-              followers: p.followers ?? null,
-            })),
+            create: (platforms ?? []).map(
+              (p: {
+                name: string;
+                handle: string;
+                url: string;
+                followers?: number | null;
+              }) => ({
+                name: p.name,
+                handle: p.handle ?? "",
+                url: p.url ?? "",
+                followers: p.followers ?? null,
+              }),
+            ),
           },
           // Прайс-лист (если передан)
           ...(pricing?.items !== undefined && {
@@ -177,7 +275,12 @@ export async function PUT(
           ...(body.portfolio !== undefined && {
             portfolio: {
               create: (body.portfolio ?? []).map(
-                (item: { videoUrl: string; category?: string; description?: string; thumbnail?: string }) => ({
+                (item: {
+                  videoUrl: string;
+                  category?: string;
+                  description?: string;
+                  thumbnail?: string;
+                }) => ({
                   videoUrl: item.videoUrl,
                   category: item.category ?? null,
                   description: item.description ?? null,
@@ -214,8 +317,16 @@ export async function PATCH(
 
     const body = await req.json();
     const allowedFields = [
-      "title", "fullName", "city", "bio", "age", "username",
-      "availability", "contentCategories", "minimumRate", "negotiable",
+      "title",
+      "fullName",
+      "city",
+      "bio",
+      "age",
+      "username",
+      "availability",
+      "contentCategories",
+      "minimumRate",
+      "negotiable",
     ];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: Record<string, any> = {};
@@ -229,8 +340,10 @@ export async function PATCH(
       data.contactEmail = body.contacts?.email ?? null;
     }
     if ("pricing" in body) {
-      if (body.pricing?.minimumRate !== undefined) data.minimumRate = body.pricing.minimumRate;
-      if (body.pricing?.negotiable !== undefined) data.negotiable = body.pricing.negotiable;
+      if (body.pricing?.minimumRate !== undefined)
+        data.minimumRate = body.pricing.minimumRate;
+      if (body.pricing?.negotiable !== undefined)
+        data.negotiable = body.pricing.negotiable;
     }
 
     const profile = await prisma.creatorProfile.update({

@@ -16,7 +16,6 @@ const ONE_YEAR = 365 * 24 * 60 * 60; // секунд
 // Статические маршруты, требующие авторизации
 const PROTECTED_PATHS = [
   "/cabinet",
-  "/settings",
   "/ads/new",
   "/ads/manage",
   "/creators/new",

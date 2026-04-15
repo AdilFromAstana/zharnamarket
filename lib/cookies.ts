@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 
-const IS_PRODUCTION = process.env.NODE_ENV === "production";
+// Флаг Secure для cookies. Включаем только если сайт реально обслуживается
+// по HTTPS — иначе браузер отвергает Secure-cookies на HTTP-соединении,
+// из-за чего клиент не видит auth-cookies и не считает пользователя
+// залогиненным. Управлять можно через COOKIE_SECURE или NEXT_PUBLIC_APP_URL.
+const IS_PRODUCTION =
+  process.env.COOKIE_SECURE === "true" ||
+  (process.env.NEXT_PUBLIC_APP_URL ?? "").startsWith("https://");
 
 export const COOKIE_NAMES = {
   ACCESS_TOKEN: "vw_access",

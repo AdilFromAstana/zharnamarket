@@ -3,18 +3,38 @@ import CreatorsListClient from "./CreatorsListClient";
 
 export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
-import { mapCreatorFromApi } from "@/lib/mappers/creator";
-import { distributeBoostedByTier, countBoostedBeforePage } from "@/lib/interleave-boosts";
-import { COOKIE_NAMES } from "@/lib/cookies";
-import { cookies } from "next/headers";
-import type { CreatorProfile, CreatorFilters, CreatorFacets } from "@/lib/types/creator";
 import {
-  VALID_PLATFORMS,
-  VALID_CITIES,
-  VALID_CATEGORIES,
-  VALID_AVAILABILITY,
   safeInt,
+  safeFloat,
+  VALID_PLATFORMS,
+  VALID_AVAILABILITY,
+  checkLength,
+  LIMITS,
 } from "@/lib/validation";
+import { cookies } from "next/headers";
+import { COOKIE_NAMES } from "@/lib/cookies";
+import { distributeBoostedByTier, countBoostedBeforePage } from "@/lib/interleave-boosts";
+import { mapCreatorFromApi } from "@/lib/mappers/creator";
+import type { CreatorProfile, CreatorFacets, CreatorFilters } from "@/lib/types/creator";
+
+// Получаем валидные категории и города из базы
+async function getValidReferenceData() {
+  const [categories, cities] = await Promise.all([
+    prisma.category.findMany({
+      where: { isActive: true },
+      select: { key: true },
+    }),
+    prisma.city.findMany({
+      where: { isActive: true },
+      select: { key: true },
+    }),
+  ]);
+
+  return {
+    validCategoryKeys: categories.map(c => c.key),
+    validCityKeys: cities.map(c => c.key),
+  };
+}
 
 export const metadata = {
   title: "Каталог креаторов — ViralAds PARTNER",
@@ -74,10 +94,18 @@ async function fetchCreatorsPage(opts: {
       maxRate, verified, minRating, sortBy = "new", search,
     } = opts;
 
-    // Validate filter values
-    const validCities = cities.filter((c) => VALID_CITIES.has(c));
+    // Fetch valid category/city keys from DB (replaces static VALID_CATEGORIES)
+    const [dbCategories, dbCities] = await Promise.all([
+      prisma.category.findMany({ where: { isActive: true }, select: { key: true } }),
+      prisma.city.findMany({ where: { isActive: true }, select: { key: true } }),
+    ]);
+    const validCategoryKeys = new Set(dbCategories.map((c) => c.key));
+    const validCityKeys = new Set(dbCities.map((c) => c.key));
+
+    // Validate filter values (use DB keys)
+    const validCities = cities.filter((c) => validCityKeys.has(c));
     const validPlatforms = platforms.filter((p) => VALID_PLATFORMS.has(p));
-    const validCategories = categories.filter((c) => VALID_CATEGORIES.has(c));
+    const validCategories = categories.filter((c) => validCategoryKeys.has(c));
     const validAvailabilities = availabilities.filter((a) => VALID_AVAILABILITY.has(a));
 
     // Prisma filter primitives
@@ -113,9 +141,9 @@ async function fetchCreatorsPage(opts: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
+      ...(cityFilter && { city: { key: cityFilter } }),
       ...(platformFilter && { platforms: { some: { name: { in: platformFilter } } } }),
-      ...(categoryFilter && { contentCategories: { hasSome: categoryFilter } }),
+      ...(categoryFilter && { categories: { some: { key: { in: categoryFilter } } } }),
       ...(availabilityFilter && { availability: availabilityFilter }),
     };
 
@@ -133,32 +161,32 @@ async function fetchCreatorsPage(opts: {
     const cityFacetWhere: any = {
       ...baseWhere,
       ...(platformFilter && { platforms: { some: { name: { in: platformFilter } } } }),
-      ...(categoryFilter && { contentCategories: { hasSome: categoryFilter } }),
+      ...(categoryFilter && { categories: { some: { key: { in: categoryFilter } } } }),
       ...(availabilityFilter && { availability: availabilityFilter }),
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const platformFacetWhere: any = {
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
-      ...(categoryFilter && { contentCategories: { hasSome: categoryFilter } }),
+      ...(cityFilter && { city: { key: cityFilter } }),
+      ...(categoryFilter && { categories: { some: { key: { in: categoryFilter } } } }),
       ...(availabilityFilter && { availability: availabilityFilter }),
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const categoryFacetWhere: any = {
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
+      ...(cityFilter && { city: { key: cityFilter } }),
       ...(platformFilter && { platforms: { some: { name: { in: platformFilter } } } }),
       ...(availabilityFilter && { availability: availabilityFilter }),
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const availabilityFacetWhere: any = {
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
+      ...(cityFilter && { city: { key: cityFilter } }),
       ...(platformFilter && { platforms: { some: { name: { in: platformFilter } } } }),
-      ...(categoryFilter && { contentCategories: { hasSome: categoryFilter } }),
+      ...(categoryFilter && { categories: { some: { key: { in: categoryFilter } } } }),
     };
 
-    const CATEGORY_VALUES = [...VALID_CATEGORIES];
+    const CATEGORY_VALUES = [...validCategoryKeys];
 
     // --- Два запроса: бустнутые + обычные, распределённые по страницам ---
     const now = new Date();
@@ -171,6 +199,8 @@ async function fetchCreatorsPage(opts: {
       priceItems: { orderBy: { sortOrder: "asc" as const } },
       boosts: { where: { expiresAt: { gte: now } } },
       user: { select: { avatarColor: true } },
+      city: { select: { id: true, key: true, label: true } },
+      categories: { select: { id: true, key: true, label: true } },
     };
 
     // Считаем общее + бустнутое + фасеты параллельно
@@ -181,15 +211,14 @@ async function fetchCreatorsPage(opts: {
       Promise.all([
         prisma.creatorProfile.count({ where }),
         prisma.creatorProfile.count({ where: boostedWhere }),
-        prisma.creatorProfile.groupBy({ by: ["city"], where: cityFacetWhere, _count: true }),
+        prisma.creatorProfile.groupBy({ by: ["cityId"], where: cityFacetWhere, _count: true }),
         prisma.creatorProfile.groupBy({ by: ["availability"], where: availabilityFacetWhere, _count: true }),
         prisma.creatorPlatform.groupBy({ by: ["name"], where: { profile: platformFacetWhere }, _count: true }),
       ]),
       Promise.all(
         CATEGORY_VALUES.map((cat) =>
           prisma.creatorProfile.count({
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            where: { ...categoryFacetWhere, contentCategories: { has: cat as any } },
+            where: { ...categoryFacetWhere, categories: { some: { key: cat } } },
           }),
         ),
       ),
@@ -223,8 +252,20 @@ async function fetchCreatorsPage(opts: {
     // Бустнутые наверху (уже отсортированы по приоритету), обычные после них
     const raws = [...boostedItems, ...regularItems];
 
+    const cityIds = cityCounts.map((r) => r.cityId).filter((id): id is string => !!id);
+    const cityKeyById = cityIds.length
+      ? Object.fromEntries(
+          (await prisma.city.findMany({ where: { id: { in: cityIds } }, select: { id: true, key: true } }))
+            .map((c) => [c.id, c.key])
+        )
+      : {};
+
     const facets: CreatorFacets = {
-      city: Object.fromEntries(cityCounts.map((r) => [r.city, r._count])),
+      city: Object.fromEntries(
+        cityCounts
+          .filter((r) => r.cityId && cityKeyById[r.cityId])
+          .map((r) => [cityKeyById[r.cityId!], r._count])
+      ),
       availability: Object.fromEntries(availabilityCounts.map((r) => [r.availability, r._count])),
       platform: Object.fromEntries(platformCounts.map((r) => [r.name, r._count])),
       category: Object.fromEntries(

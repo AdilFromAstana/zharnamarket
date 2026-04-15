@@ -82,7 +82,7 @@ const BOOST_FLOATING_BADGE: Record<
 // ── Стили карточки ───────────────────────────────────────────────────────────
 function getCardClass(boost: BoostLevel): string {
   const base =
-    "relative rounded-[32px] p-5 transition-all duration-300 flex flex-col";
+    "relative rounded-[32px] p-5 transition-all duration-300 flex flex-col h-full";
 
   if (boost === "premium") {
     return cn(
@@ -201,9 +201,9 @@ export default function CreatorCard({ creator }: CreatorCardProps) {
       : "По договорённости";
 
   return (
-    <Link href={`/creators/${creator.id}`} className="block group">
+    <Link href={`/creators/${creator.id}`} className="block group h-full">
       {/* Relative wrapper нужен для floating badge */}
-      <div className="relative">
+      <div className="relative h-full">
         {/* ── Floating badge ────────────────────────────────────────────── */}
         {badgeConfig && (
           <div
@@ -352,7 +352,7 @@ export default function CreatorCard({ creator }: CreatorCardProps) {
           </div>
 
           {/* ── Footer: портфолио + цена + кнопка ────────────────────── */}
-          <div className="mt-4 pt-4 border-t border-slate-50 flex items-center justify-between gap-4">
+          <div className="mt-auto pt-4 border-t border-slate-50 flex items-center justify-between gap-4">
             <div className="flex flex-col gap-0.5">
               {/* Количество работ в портфолио */}
               {portfolioCount > 0 && (

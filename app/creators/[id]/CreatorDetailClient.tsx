@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CreatorProfile } from "@/lib/types/creator";
 import ContactModal from "@/app/ads/[id]/ContactModal";
 import ReportModal from "@/components/report/ReportModal";
@@ -26,6 +26,11 @@ export default function CreatorDetailClient({
 }: CreatorDetailClientProps) {
   const [contactOpen, setContactOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+
+  useEffect(() => {
+    if (isPreview) return;
+    api.post(`/api/creators/${creator.id}/view`).catch(() => {});
+  }, [creator.id, isPreview]);
 
   const handleContactClick = () => {
     setContactOpen(true);

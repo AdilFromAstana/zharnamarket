@@ -12,12 +12,14 @@ export function mapCreatorFromApi(c: any): CreatorProfile {
     username: c.username ?? null,
     avatar: c.avatar ?? null,
     bio: c.bio ?? null,
-    city: c.city,
+    city: typeof c.city === "string" ? c.city : (c.city?.key ?? null),
     age: c.age ?? null,
     availability: c.availability,
     verified: c.verified ?? false,
     platforms: c.platforms ?? [],
-    contentCategories: c.contentCategories ?? [],
+    contentCategories: Array.isArray(c.categories)
+      ? c.categories.map((cat: { key: string }) => cat.key)
+      : (c.contentCategories ?? []),
     portfolio: c.portfolio ?? [],
     pricing: {
       minimumRate: c.minimumRate ?? c.pricing?.minimumRate ?? 0,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getCurrentUserId, unauthorized, badRequest, serverError } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { sendPasswordChangedEmail } from "@/lib/email";
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,7 +21,10 @@ export async function POST(req: NextRequest) {
     if (newPassword.length > 128)
       return badRequest("Пароль не может быть длиннее 128 символов");
 
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { notificationSettings: { select: { emailSecurity: true } } },
+    });
     if (!user) return unauthorized();
     if (!user.password) return badRequest("У вашего аккаунта нет пароля (вход через Google)");
 
@@ -37,6 +41,15 @@ export async function POST(req: NextRequest) {
       where: { id: userId },
       data: { password: hashedNew },
     });
+
+    if (
+      user.email &&
+      (!user.notificationSettings || user.notificationSettings.emailSecurity)
+    ) {
+      sendPasswordChangedEmail(user.email).catch((err) => {
+        console.error("[sendPasswordChangedEmail]", err);
+      });
+    }
 
     return NextResponse.json({ message: "Пароль успешно изменён" });
   } catch (err) {

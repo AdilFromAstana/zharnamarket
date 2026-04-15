@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Button } from "antd";
 import {
   EnvironmentOutlined,
@@ -26,6 +27,7 @@ import { ENUM_TO_CITY, ENUM_TO_CATEGORY } from "@/lib/enum-maps";
 import StarRating from "@/components/reviews/StarRating";
 import VerifiedBadge from "@/components/ui/VerifiedBadge";
 import PlatformIcon from "./PlatformIcon";
+import { api } from "@/lib/api-client";
 
 interface CreatorProfileSidebarProps {
   creator: CreatorProfile;
@@ -41,6 +43,23 @@ export default function CreatorProfileSidebar({
   const availabilityColor = AVAILABILITY_COLORS[creator.availability];
   const availabilityLabel = AVAILABILITY_LABELS[creator.availability];
   const online = isRecentlyActive(creator.metadata.lastActiveAt);
+
+  const [viewsLast30, setViewsLast30] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ last30Days: number | null }>(
+        `/api/creators/${creator.id}/view-stats/public`,
+      )
+      .then((res) => {
+        if (!cancelled) setViewsLast30(res.last30Days);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [creator.id]);
 
   return (
     <div className="lg:col-span-1">
@@ -130,8 +149,8 @@ export default function CreatorProfileSidebar({
 
           {/* Social proof + registration date */}
           <div className="hidden md:flex items-center justify-center gap-2 mt-1.5 text-xs text-gray-400 flex-wrap">
-            {creator.contactClickCount > 0 && (
-              <span>{creator.contactClickCount} обращ.</span>
+            {viewsLast30 !== null && (
+              <span>{viewsLast30} просм. за 30 дней</span>
             )}
             <span>
               На платформе с {formatDate(creator.metadata.createdAt)}
@@ -192,11 +211,11 @@ export default function CreatorProfileSidebar({
                   </span>
                 </div>
               )}
-              {creator.contactClickCount > 0 && (
+              {viewsLast30 !== null && (
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-500">Обращений</span>
+                  <span className="text-sm text-gray-500">Просмотров за 30 дней</span>
                   <span className="text-sm font-bold text-gray-900">
-                    {creator.contactClickCount}
+                    {viewsLast30}
                   </span>
                 </div>
               )}

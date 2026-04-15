@@ -1,15 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { CloseOutlined, FilterOutlined } from "@ant-design/icons";
 import {
-  CITIES,
-  PLATFORMS,
-  BUDGET_TYPES,
+  getCities,
+  getPlatforms,
+  getBudgetTypes,
   BUDGET_TYPE_LABELS,
 } from "@/lib/constants";
 import BudgetTypeIcon from "@/components/ui/BudgetTypeIcon";
-import { CITY_TO_ENUM } from "@/lib/enum-maps";
 import type { AdFilters, AdFacets, BudgetType } from "@/lib/types/ad";
 import { PAYMENT_MODE_LABELS } from "@/lib/constants";
 
@@ -31,21 +30,6 @@ const SORT_OPTIONS = [
 ];
 
 const CITIES_VISIBLE = 5;
-
-// Pre-build item arrays with { label, value } (label = Russian, value = DB code)
-const PLATFORM_ITEMS: FilterItem[] = PLATFORMS.map((p) => ({
-  label: p,
-  value: p,
-}));
-
-const CITY_ITEMS: FilterItem[] = CITIES.filter((c) => c !== "Все города").map(
-  (c) => ({ label: c, value: CITY_TO_ENUM[c] ?? c }),
-);
-
-const BUDGET_TYPE_ITEMS: FilterItem[] = BUDGET_TYPES.map((t) => ({
-  label: t,
-  value: t,
-}));
 
 const PAYMENT_MODE_ITEMS: FilterItem[] = [
   { label: PAYMENT_MODE_LABELS.direct, value: "direct" },
@@ -199,10 +183,12 @@ function SortSection({
 }
 
 function BudgetTypeSection({
+  items,
   selected,
   onToggle,
   counts,
 }: {
+  items: FilterItem[];
   selected: string[];
   onToggle: (val: string) => void;
   counts?: Record<string, number>;
@@ -213,7 +199,7 @@ function BudgetTypeSection({
         Тип бюджета
       </p>
       <ul className="flex flex-col gap-0.5">
-        {BUDGET_TYPE_ITEMS.map((item) => {
+        {items.map((item) => {
           const active = selected.includes(item.value);
           const count = counts ? (counts[item.value] ?? 0) : undefined;
           const isDisabled = counts !== undefined && count === 0 && !active;
@@ -308,9 +294,9 @@ function DynamicFacetSection({
       .then((r) => r.json())
       .then((res) => {
         setItems(
-          (res.data ?? []).map((item: { id: string; label: string }) => ({
+          (res.data ?? []).map((item: { key: string; label: string }) => ({
             label: item.label,
-            value: item.id,
+            value: item.key,
           })),
         );
       })
@@ -336,6 +322,45 @@ export default function AdFiltersComponent({
   onReset,
   facets,
 }: AdFiltersProps) {
+  const [cities, setCities] = useState<{ key: string; label: string }[]>([]);
+  const [platforms, setPlatforms] = useState<{ key: string; label: string }[]>([]);
+  const [budgetTypes, setBudgetTypes] = useState<{ key: string; label: string }[]>([]);
+
+  useEffect(() => {
+    const loadReferenceData = async () => {
+      try {
+        const [citiesData, platformsData, budgetTypesData] = await Promise.all([
+          getCities(),
+          getPlatforms(),
+          getBudgetTypes(),
+        ]);
+        setCities(citiesData);
+        setPlatforms(platformsData);
+        setBudgetTypes(budgetTypesData);
+      } catch (error) {
+        console.error("Error loading reference data:", error);
+      }
+    };
+
+    loadReferenceData();
+  }, []);
+
+  const PLATFORM_ITEMS = useMemo<FilterItem[]>(
+    () => platforms.map((p) => ({ label: p.label, value: p.key })),
+    [platforms],
+  );
+  const CITY_ITEMS = useMemo<FilterItem[]>(
+    () =>
+      cities
+        .filter((c) => c.key !== "AllCities")
+        .map((c) => ({ label: c.label, value: c.key })),
+    [cities],
+  );
+  const BUDGET_TYPE_ITEMS = useMemo<FilterItem[]>(
+    () => budgetTypes.map((t) => ({ label: t.label, value: t.key })),
+    [budgetTypes],
+  );
+
   const hasFilters = !!(
     filters.city?.length ||
     filters.platform?.length ||
@@ -421,6 +446,7 @@ export default function AdFiltersComponent({
 
       {/* Тип бюджета */}
       <BudgetTypeSection
+        items={BUDGET_TYPE_ITEMS}
         selected={filters.budgetType ?? []}
         onToggle={(val) => toggleArray("budgetType", val)}
         counts={facets?.budgetType}

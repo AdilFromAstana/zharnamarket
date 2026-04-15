@@ -1,9 +1,5 @@
 import { Form, Input, InputNumber, Space } from "antd";
-import {
-  CheckOutlined,
-  TeamOutlined,
-  LockOutlined,
-} from "@ant-design/icons";
+import { CheckOutlined, TeamOutlined, LockOutlined } from "@ant-design/icons";
 import type { FormInstance } from "antd";
 import type { BudgetType } from "@/lib/types/ad";
 import type { FormValues, PaymentMode } from "../_types";
@@ -32,8 +28,7 @@ export default function Step2Form({
       <Form.Item
         label={
           <span className="font-semibold text-gray-900">
-            Как вы платите блогеру?{" "}
-            <span className="text-red-500">*</span>
+            Как вы платите блогеру? <span className="text-red-500">*</span>
           </span>
         }
         name="budgetType"

@@ -4,7 +4,10 @@ import AdsListClient from "./AdsListClient";
 export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
 import { mapPrismaAdToAd } from "@/lib/mappers/ad";
-import { distributeBoostedByTier, countBoostedBeforePage } from "@/lib/interleave-boosts";
+import {
+  distributeBoostedByTier,
+  countBoostedBeforePage,
+} from "@/lib/interleave-boosts";
 import { toDbCity, toDbCategory } from "@/lib/enum-maps";
 import { COOKIE_NAMES } from "@/lib/cookies";
 import { cookies } from "next/headers";
@@ -132,13 +135,40 @@ async function fetchAdsPage(p: FetchParams): Promise<{
     const budgetTypeFilter = multiFilter(validBudgetTypes);
     const paymentModeFilter = multiFilter(validPaymentModes);
 
-    // New DB-driven category dimension filters (IDs, already valid)
-    const videoFormatFilter =
-      p.videoFormats.length > 0 ? multiFilter(p.videoFormats) : undefined;
-    const adFormatFilter =
-      p.adFormats.length > 0 ? multiFilter(p.adFormats) : undefined;
-    const adSubjectFilter =
-      p.adSubjects.length > 0 ? multiFilter(p.adSubjects) : undefined;
+    // New DB-driven category dimension filters — incoming values are keys (e.g. "Memes")
+    const resolveKeysToIds = async (
+      keys: string[],
+      model: "videoFormat" | "adFormat" | "adSubject",
+    ): Promise<string[]> => {
+      if (!keys.length) return [];
+      const delegate = prisma[model] as unknown as {
+        findMany: (args: {
+          where: { key: { in: string[] } };
+          select: { id: true };
+        }) => Promise<{ id: string }[]>;
+      };
+      const rows = await delegate.findMany({
+        where: { key: { in: keys } },
+        select: { id: true },
+      });
+      return rows.map((r) => r.id);
+    };
+
+    const [videoFormatIds, adFormatIds, adSubjectIds] = await Promise.all([
+      resolveKeysToIds(p.videoFormats, "videoFormat"),
+      resolveKeysToIds(p.adFormats, "adFormat"),
+      resolveKeysToIds(p.adSubjects, "adSubject"),
+    ]);
+
+    const videoFormatFilter = videoFormatIds.length
+      ? multiFilter(videoFormatIds)
+      : undefined;
+    const adFormatFilter = adFormatIds.length
+      ? multiFilter(adFormatIds)
+      : undefined;
+    const adSubjectFilter = adSubjectIds.length
+      ? multiFilter(adSubjectIds)
+      : undefined;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const baseWhere: any = {
@@ -154,11 +184,15 @@ async function fetchAdsPage(p: FetchParams): Promise<{
       ];
     }
 
+    const cityRelFilter = cityFilter ? { is: { key: cityFilter } } : undefined;
+    const categoryRelFilter = categoryFilter
+      ? { is: { key: categoryFilter } }
+      : undefined;
     const where = {
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
+      ...(cityRelFilter && { city: cityRelFilter }),
       ...(platformFilter && { platform: platformFilter }),
-      ...(categoryFilter && { category: categoryFilter }),
+      ...(categoryRelFilter && { category: categoryRelFilter }),
       ...(budgetTypeFilter && { budgetType: budgetTypeFilter }),
       ...(paymentModeFilter && { paymentMode: paymentModeFilter }),
       ...(videoFormatFilter && { videoFormatId: videoFormatFilter }),
@@ -176,8 +210,8 @@ async function fetchAdsPage(p: FetchParams): Promise<{
     // Facet wheres — each excludes its own dimension
     const platformFacetWhere = {
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
-      ...(categoryFilter && { category: categoryFilter }),
+      ...(cityRelFilter && { city: cityRelFilter }),
+      ...(categoryRelFilter && { category: categoryRelFilter }),
       ...(budgetTypeFilter && { budgetType: budgetTypeFilter }),
       ...(paymentModeFilter && { paymentMode: paymentModeFilter }),
       ...newDimFilters,
@@ -185,14 +219,14 @@ async function fetchAdsPage(p: FetchParams): Promise<{
     const cityFacetWhere = {
       ...baseWhere,
       ...(platformFilter && { platform: platformFilter }),
-      ...(categoryFilter && { category: categoryFilter }),
+      ...(categoryRelFilter && { category: categoryRelFilter }),
       ...(budgetTypeFilter && { budgetType: budgetTypeFilter }),
       ...(paymentModeFilter && { paymentMode: paymentModeFilter }),
       ...newDimFilters,
     };
     const categoryFacetWhere = {
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
+      ...(cityRelFilter && { city: cityRelFilter }),
       ...(platformFilter && { platform: platformFilter }),
       ...(budgetTypeFilter && { budgetType: budgetTypeFilter }),
       ...(paymentModeFilter && { paymentMode: paymentModeFilter }),
@@ -200,17 +234,17 @@ async function fetchAdsPage(p: FetchParams): Promise<{
     };
     const budgetTypeFacetWhere = {
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
+      ...(cityRelFilter && { city: cityRelFilter }),
       ...(platformFilter && { platform: platformFilter }),
-      ...(categoryFilter && { category: categoryFilter }),
+      ...(categoryRelFilter && { category: categoryRelFilter }),
       ...(paymentModeFilter && { paymentMode: paymentModeFilter }),
       ...newDimFilters,
     };
     const paymentModeFacetWhere = {
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
+      ...(cityRelFilter && { city: cityRelFilter }),
       ...(platformFilter && { platform: platformFilter }),
-      ...(categoryFilter && { category: categoryFilter }),
+      ...(categoryRelFilter && { category: categoryRelFilter }),
       ...(budgetTypeFilter && { budgetType: budgetTypeFilter }),
       ...newDimFilters,
     };
@@ -218,7 +252,7 @@ async function fetchAdsPage(p: FetchParams): Promise<{
     // New dimension facet wheres (each excludes its own dimension)
     const baseWithOldFilters = {
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
+      ...(cityRelFilter && { city: cityRelFilter }),
       ...(platformFilter && { platform: platformFilter }),
       ...(budgetTypeFilter && { budgetType: budgetTypeFilter }),
       ...(paymentModeFilter && { paymentMode: paymentModeFilter }),
@@ -242,14 +276,18 @@ async function fetchAdsPage(p: FetchParams): Promise<{
     // Сортировка (без raisedAt — распределение бустнутых идёт через два запроса)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const orderBy: any =
-      p.sortBy === "budget"
-        ? { budgetFrom: "desc" }
-        : { publishedAt: "desc" };
+      p.sortBy === "budget" ? { budgetFrom: "desc" } : { publishedAt: "desc" };
 
     // --- Два запроса: бустнутые + обычные, распределённые по страницам ---
     const now = new Date();
-    const boostedWhere = { ...where, boosts: { some: { expiresAt: { gt: now } } } };
-    const regularWhere = { ...where, NOT: { boosts: { some: { expiresAt: { gt: now } } } } };
+    const boostedWhere = {
+      ...where,
+      boosts: { some: { expiresAt: { gt: now } } },
+    };
+    const regularWhere = {
+      ...where,
+      NOT: { boosts: { some: { expiresAt: { gt: now } } } },
+    };
 
     const adInclude = {
       boosts: {
@@ -268,60 +306,215 @@ async function fetchAdsPage(p: FetchParams): Promise<{
       videoFormat: { select: { id: true, key: true, label: true, icon: true } },
       adFormat: { select: { id: true, key: true, label: true, icon: true } },
       adSubject: { select: { id: true, key: true, label: true, icon: true } },
+      city: { select: { id: true, key: true, label: true } },
+      category: { select: { id: true, key: true, label: true } },
     };
 
     // Считаем total + totalBoosted + фасеты параллельно
     const [
-      total, totalBoosted,
-      platformCounts, cityCounts, categoryCounts, budgetTypeCounts, paymentModeCounts,
-      videoFormatCounts, adFormatCounts, adSubjectCounts,
+      total,
+      totalBoosted,
+      platformCounts,
+      cityCounts,
+      categoryCounts,
+      budgetTypeCounts,
+      paymentModeCounts,
+      videoFormatCounts,
+      adFormatCounts,
+      adSubjectCounts,
     ] = await Promise.all([
       prisma.ad.count({ where }),
       prisma.ad.count({ where: boostedWhere }),
-      prisma.ad.groupBy({ by: ["platform"], where: platformFacetWhere, _count: true }),
-      prisma.ad.groupBy({ by: ["city"], where: cityFacetWhere, _count: true }),
-      prisma.ad.groupBy({ by: ["category"], where: categoryFacetWhere, _count: true }),
-      prisma.ad.groupBy({ by: ["budgetType"], where: budgetTypeFacetWhere, _count: true }),
-      prisma.ad.groupBy({ by: ["paymentMode"], where: paymentModeFacetWhere, _count: true }),
-      prisma.ad.groupBy({ by: ["videoFormatId"], where: { ...videoFormatFacetWhere, videoFormatId: { not: null } }, _count: true }),
-      prisma.ad.groupBy({ by: ["adFormatId"], where: { ...adFormatFacetWhere, adFormatId: { not: null } }, _count: true }),
-      prisma.ad.groupBy({ by: ["adSubjectId"], where: { ...adSubjectFacetWhere, adSubjectId: { not: null } }, _count: true }),
+      prisma.ad.groupBy({
+        by: ["platform"],
+        where: platformFacetWhere,
+        _count: true,
+      }),
+      prisma.ad.groupBy({
+        by: ["cityId"],
+        where: cityFacetWhere,
+        _count: true,
+      }),
+      prisma.ad.groupBy({
+        by: ["categoryId"],
+        where: categoryFacetWhere,
+        _count: true,
+      }),
+      prisma.ad.groupBy({
+        by: ["budgetType"],
+        where: budgetTypeFacetWhere,
+        _count: true,
+      }),
+      prisma.ad.groupBy({
+        by: ["paymentMode"],
+        where: paymentModeFacetWhere,
+        _count: true,
+      }),
+      prisma.ad.groupBy({
+        by: ["videoFormatId"],
+        where: { ...videoFormatFacetWhere, videoFormatId: { not: null } },
+        _count: true,
+      }),
+      prisma.ad.groupBy({
+        by: ["adFormatId"],
+        where: { ...adFormatFacetWhere, adFormatId: { not: null } },
+        _count: true,
+      }),
+      prisma.ad.groupBy({
+        by: ["adSubjectId"],
+        where: { ...adSubjectFacetWhere, adSubjectId: { not: null } },
+        _count: true,
+      }),
     ]);
 
     // Рассчитываем слоты для бустнутых на каждую страницу (interleaved по тирам)
     const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
     // Загружаем ВСЕ бустнутые (их немного) — нужны для распределения по тирам
-    const allBoosted = totalBoosted > 0
-      ? await prisma.ad.findMany({ where: boostedWhere, orderBy, include: adInclude })
-      : [];
+    const allBoosted =
+      totalBoosted > 0
+        ? await prisma.ad.findMany({
+            where: boostedWhere,
+            orderBy,
+            include: adInclude,
+          })
+        : [];
 
     // Per-visitor seed: разные посетители видят разный порядок бустов
     const cookieStore = await cookies();
     const visitorId = cookieStore.get(COOKIE_NAMES.VISITOR_ID)?.value;
 
     // Пропорциональное распределение: каждая страница получает микс Premium+VIP+Rise
-    const boostedItems = distributeBoostedByTier(allBoosted, p.page, totalPages, visitorId);
+    const boostedItems = distributeBoostedByTier(
+      allBoosted,
+      p.page,
+      totalPages,
+      visitorId,
+    );
     const boostedOnThisPage = boostedItems.length;
-    const boostedBefore = countBoostedBeforePage(allBoosted, p.page, totalPages, visitorId);
+    const boostedBefore = countBoostedBeforePage(
+      allBoosted,
+      p.page,
+      totalPages,
+      visitorId,
+    );
     const regularTake = PAGE_SIZE - boostedOnThisPage;
     const regularSkip = (p.page - 1) * PAGE_SIZE - boostedBefore;
 
     const regularItems = await prisma.ad.findMany({
-      where: regularWhere, orderBy, skip: Math.max(0, regularSkip), take: regularTake, include: adInclude,
+      where: regularWhere,
+      orderBy,
+      skip: Math.max(0, regularSkip),
+      take: regularTake,
+      include: adInclude,
     });
 
     const raws = [...boostedItems, ...regularItems];
 
+    // Resolve cuid → key for each relation-based facet
+    const collectIds = <R extends { _count: number }>(
+      rows: R[],
+      get: (r: R) => string | null,
+    ): string[] =>
+      Array.from(new Set(rows.map(get).filter((v): v is string => !!v)));
+
+    const cityIdsRes = collectIds(cityCounts, (r) => r.cityId);
+    const categoryIdsRes = collectIds(categoryCounts, (r) => r.categoryId);
+    const videoFormatIdsRes = collectIds(
+      videoFormatCounts,
+      (r) => r.videoFormatId,
+    );
+    const adFormatIdsRes = collectIds(adFormatCounts, (r) => r.adFormatId);
+    const adSubjectIdsRes = collectIds(adSubjectCounts, (r) => r.adSubjectId);
+
+    const [
+      cityKeys,
+      categoryKeys,
+      videoFormatKeys,
+      adFormatKeys,
+      adSubjectKeys,
+    ] = await Promise.all([
+      cityIdsRes.length
+        ? prisma.city.findMany({
+            where: { id: { in: cityIdsRes } },
+            select: { id: true, key: true },
+          })
+        : [],
+      categoryIdsRes.length
+        ? prisma.category.findMany({
+            where: { id: { in: categoryIdsRes } },
+            select: { id: true, key: true },
+          })
+        : [],
+      videoFormatIdsRes.length
+        ? prisma.videoFormat.findMany({
+            where: { id: { in: videoFormatIdsRes } },
+            select: { id: true, key: true },
+          })
+        : [],
+      adFormatIdsRes.length
+        ? prisma.adFormat.findMany({
+            where: { id: { in: adFormatIdsRes } },
+            select: { id: true, key: true },
+          })
+        : [],
+      adSubjectIdsRes.length
+        ? prisma.adSubject.findMany({
+            where: { id: { in: adSubjectIdsRes } },
+            select: { id: true, key: true },
+          })
+        : [],
+    ]);
+
+    const cityKeyById = Object.fromEntries(cityKeys.map((c) => [c.id, c.key]));
+    const categoryKeyById = Object.fromEntries(
+      categoryKeys.map((c) => [c.id, c.key]),
+    );
+    const videoFormatKeyById = Object.fromEntries(
+      videoFormatKeys.map((c) => [c.id, c.key]),
+    );
+    const adFormatKeyById = Object.fromEntries(
+      adFormatKeys.map((c) => [c.id, c.key]),
+    );
+    const adSubjectKeyById = Object.fromEntries(
+      adSubjectKeys.map((c) => [c.id, c.key]),
+    );
+
     const facets: AdFacets = {
-      platform: Object.fromEntries(platformCounts.map((r) => [r.platform, r._count])),
-      city: Object.fromEntries(cityCounts.map((r) => [r.city, r._count])),
-      category: Object.fromEntries(categoryCounts.map((r) => [r.category, r._count])),
-      budgetType: Object.fromEntries(budgetTypeCounts.map((r) => [r.budgetType, r._count])),
-      paymentMode: Object.fromEntries(paymentModeCounts.map((r) => [r.paymentMode, r._count])),
-      videoFormat: Object.fromEntries(videoFormatCounts.map((r) => [r.videoFormatId!, r._count])),
-      adFormat: Object.fromEntries(adFormatCounts.map((r) => [r.adFormatId!, r._count])),
-      adSubject: Object.fromEntries(adSubjectCounts.map((r) => [r.adSubjectId!, r._count])),
+      platform: Object.fromEntries(
+        platformCounts.map((r) => [r.platform, r._count]),
+      ),
+      city: Object.fromEntries(
+        cityCounts
+          .filter((r) => r.cityId && cityKeyById[r.cityId])
+          .map((r) => [cityKeyById[r.cityId!], r._count]),
+      ),
+      category: Object.fromEntries(
+        categoryCounts
+          .filter((r) => r.categoryId && categoryKeyById[r.categoryId])
+          .map((r) => [categoryKeyById[r.categoryId!], r._count]),
+      ),
+      budgetType: Object.fromEntries(
+        budgetTypeCounts.map((r) => [r.budgetType, r._count]),
+      ),
+      paymentMode: Object.fromEntries(
+        paymentModeCounts.map((r) => [r.paymentMode, r._count]),
+      ),
+      videoFormat: Object.fromEntries(
+        videoFormatCounts
+          .filter((r) => r.videoFormatId && videoFormatKeyById[r.videoFormatId])
+          .map((r) => [videoFormatKeyById[r.videoFormatId!], r._count]),
+      ),
+      adFormat: Object.fromEntries(
+        adFormatCounts
+          .filter((r) => r.adFormatId && adFormatKeyById[r.adFormatId])
+          .map((r) => [adFormatKeyById[r.adFormatId!], r._count]),
+      ),
+      adSubject: Object.fromEntries(
+        adSubjectCounts
+          .filter((r) => r.adSubjectId && adSubjectKeyById[r.adSubjectId])
+          .map((r) => [adSubjectKeyById[r.adSubjectId!], r._count]),
+      ),
     };
 
     return {

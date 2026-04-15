@@ -1,4 +1,4 @@
-import type { Platform, BudgetType } from "./types/ad";
+import type { BudgetType } from "./types/ad";
 import type { BoostOption, BoostType } from "./types/payment";
 
 export const STORAGE_KEYS = {
@@ -8,51 +8,176 @@ export const STORAGE_KEYS = {
   CREATOR_DRAFT: "new_creator_draft",
 } as const;
 
-/** UI-метки городов (русские строки для отображения в фильтрах и формах) */
-export const CITIES: string[] = [
-  "Алматы",
-  "Астана",
-  "Шымкент",
-  "Караганда",
-  "Актау",
-  "Павлодар",
-  "Все города",
-];
+export type RefItem = {
+  key: string;
+  label: string;
+  iconUrl?: string | null;
+};
 
-export const PLATFORMS: Platform[] = ["TikTok", "Instagram", "YouTube"];
+// Кэши для API данных
+let citiesCache: RefItem[] | null = null;
+let categoriesCache: RefItem[] | null = null;
+let platformsCache: RefItem[] | null = null;
+let budgetTypesCache: RefItem[] | null = null;
+let businessCategoriesCache: RefItem[] | null = null;
 
-export const BUDGET_TYPES: BudgetType[] = [
-  "fixed",
-  "per_views",
-  "revenue",
-  "negotiable",
-];
+/** Получить список городов из API */
+export async function getCities(): Promise<RefItem[]> {
+  if (citiesCache) return citiesCache;
 
-/** UI-метки категорий (русские строки для отображения в фильтрах и формах) */
-export const CATEGORIES: string[] = [
-  "Кино-нарезки",
-  "Мемы",
-  "Обзоры",
-  "Подкасты",
-  "Геймплей",
-  "Музыка/Атмосфера",
-  "Авто",
-  "Красота",
-  "Спорт",
-  "Мультфильмы",
-];
+  try {
+    const response = await fetch("/api/cities");
+    if (!response.ok) throw new Error("Failed to fetch cities");
+    const cities = await response.json();
+    const result: RefItem[] = cities.map(
+      (city: { key: string; label: string }) => ({
+        key: city.key,
+        label: city.label,
+      }),
+    );
+    citiesCache = result;
+    return result;
+  } catch (error) {
+    console.error("Error fetching cities:", error);
+    return [
+      { key: "Almaty", label: "Алматы" },
+      { key: "Astana", label: "Астана" },
+      { key: "Shymkent", label: "Шымкент" },
+      { key: "Karaganda", label: "Караганда" },
+      { key: "Aktau", label: "Актау" },
+      { key: "Pavlodar", label: "Павлодар" },
+      { key: "AllCities", label: "Все города" },
+    ];
+  }
+}
 
-export const BUSINESS_CATEGORIES = [
-  "Еда и напитки",
-  "Ретейл",
-  "Услуги",
-  "IT",
-  "Красота и здоровье",
-  "Спорт и фитнес",
-  "Авто",
-  "Недвижимость",
-  "Другое",
-];
+/** Получить список платформ из API */
+export async function getPlatforms(): Promise<RefItem[]> {
+  if (platformsCache) return platformsCache;
+
+  try {
+    const response = await fetch("/api/platforms");
+    if (!response.ok) throw new Error("Failed to fetch platforms");
+    const platforms = await response.json();
+    const result: RefItem[] = platforms.map(
+      (platform: {
+        key: string;
+        label: string;
+        iconUrl?: string | null;
+      }) => ({
+        key: platform.key,
+        label: platform.label,
+        iconUrl: platform.iconUrl ?? null,
+      }),
+    );
+    platformsCache = result;
+    return result;
+  } catch (error) {
+    console.error("Error fetching platforms:", error);
+    return [
+      { key: "TikTok", label: "TikTok" },
+      { key: "Instagram", label: "Instagram" },
+      { key: "YouTube", label: "YouTube" },
+      { key: "Threads", label: "Threads" },
+      { key: "Telegram", label: "Telegram" },
+      { key: "VK", label: "VK" },
+    ];
+  }
+}
+
+/** Получить список типов бюджета из API */
+export async function getBudgetTypes(): Promise<RefItem[]> {
+  if (budgetTypesCache) return budgetTypesCache;
+
+  try {
+    const response = await fetch("/api/budget-types");
+    if (!response.ok) throw new Error("Failed to fetch budget types");
+    const budgetTypes = await response.json();
+    const result: RefItem[] = budgetTypes.map(
+      (type: { key: string; label: string }) => ({
+        key: type.key,
+        label: type.label,
+      }),
+    );
+    budgetTypesCache = result;
+    return result;
+  } catch (error) {
+    console.error("Error fetching budget types:", error);
+    return [
+      { key: "fixed", label: "Фиксированная цена" },
+      { key: "per_views", label: "За просмотры" },
+      { key: "revenue", label: "Доход" },
+      { key: "negotiable", label: "Договорная" },
+    ];
+  }
+}
+
+/** Получить список категорий из API */
+export async function getCategories(): Promise<RefItem[]> {
+  if (categoriesCache) return categoriesCache;
+
+  try {
+    const response = await fetch("/api/categories");
+    if (!response.ok) throw new Error("Failed to fetch categories");
+    const categories = await response.json();
+    const result: RefItem[] = categories.map(
+      (category: { key: string; label: string }) => ({
+        key: category.key,
+        label: category.label,
+      }),
+    );
+    categoriesCache = result;
+    return result;
+  } catch (error) {
+    console.error("Error fetching categories:", error);
+    return [
+      { key: "KinoNarezki", label: "Кино-нарезки" },
+      { key: "Memy", label: "Мемы" },
+      { key: "Obzory", label: "Обзоры" },
+      { key: "Podkasty", label: "Подкасты" },
+      { key: "Geympley", label: "Геймплей" },
+      { key: "MuzykaAtmosfera", label: "Музыка/Атмосфера" },
+      { key: "Avto", label: "Авто" },
+      { key: "Krasota", label: "Красота" },
+      { key: "Sport", label: "Спорт" },
+      { key: "Multfilmy", label: "Мультфильмы" },
+    ];
+  }
+}
+
+/** Получить список бизнес-категорий из API */
+export async function getBusinessCategories(): Promise<RefItem[]> {
+  if (businessCategoriesCache) return businessCategoriesCache;
+
+  try {
+    const response = await fetch("/api/business-categories");
+    if (!response.ok) throw new Error("Failed to fetch business categories");
+    const businessCategories = await response.json();
+    const result: RefItem[] = businessCategories.map(
+      (category: { key: string; label: string }) => ({
+        key: category.key,
+        label: category.label,
+      }),
+    );
+    businessCategoriesCache = result;
+    return result;
+  } catch (error) {
+    console.error("Error fetching business categories:", error);
+    return [
+      { key: "EdaNapitki", label: "Еда и напитки" },
+      { key: "Retail", label: "Ретейл" },
+      { key: "Uslugi", label: "Услуги" },
+      { key: "IT", label: "IT" },
+      { key: "KrasotaZdorovie", label: "Красота и здоровье" },
+      { key: "SportFitnes", label: "Спорт и фитнес" },
+      { key: "Avto", label: "Авто" },
+      { key: "Nedvizhimost", label: "Недвижимость" },
+      { key: "Drugoe", label: "Другое" },
+    ];
+  }
+}
+
+// Старые статичные константы удалены - теперь используйте асинхронные функции getCities(), getCategories() и т.д.
 
 /**
  * Стоимость базовой публикации объявления.

@@ -112,16 +112,6 @@ function AdsManagePageInner() {
     fetchAds();
   }, [authLoading]);
 
-  if (authLoading) {
-    return (
-      <PublicLayout>
-        <div className="flex items-center justify-center min-h-[400px]">
-          <Spin size="large" />
-        </div>
-      </PublicLayout>
-    );
-  }
-
   // Проверяем незавершённую оплату публикации в localStorage
   useEffect(() => {
     try {
@@ -134,6 +124,16 @@ function AdsManagePageInner() {
       // ignore
     }
   }, []);
+
+  if (authLoading) {
+    return (
+      <PublicLayout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <Spin size="large" />
+        </div>
+      </PublicLayout>
+    );
+  }
 
   const dismissPendingPayment = () => {
     try {

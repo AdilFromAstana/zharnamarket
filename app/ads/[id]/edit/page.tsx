@@ -26,17 +26,17 @@ import {
 import { useParams, useRouter } from "next/navigation";
 import PublicLayout from "@/components/layout/PublicLayout";
 import StickyBottomBar from "@/components/ui/StickyBottomBar";
-import { CITIES, CATEGORIES } from "@/lib/constants";
-import { CITY_TO_ENUM, CATEGORY_TO_ENUM } from "@/lib/enum-maps";
+import {
+  getCities,
+  getCategories,
+  getPlatforms,
+  type RefItem,
+} from "@/lib/constants";
 import type { BudgetType } from "@/lib/types/ad";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import RichTextEditor from "@/components/ui/RichTextEditor";
-
-const { TextArea } = Input;
-
-const PLATFORMS = ["TikTok", "Instagram", "YouTube"];
 
 const PLATFORM_ICONS: Record<string, React.ReactNode> = {
   TikTok: <PlaySquareOutlined />,
@@ -80,11 +80,33 @@ const BUDGET_TYPE_OPTIONS: {
 ];
 
 export default function AdEditPage() {
-  // Защита страницы — редирект если не авторизован
   useRequireAuth();
 
-  const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const params = useParams();
+  const id = params.id as string;
+  const [cities, setCities] = useState<RefItem[]>([]);
+  const [categories, setCategories] = useState<RefItem[]>([]);
+  const [platforms, setPlatforms] = useState<RefItem[]>([]);
+
+  useEffect(() => {
+    const loadReferenceData = async () => {
+      try {
+        const [citiesData, categoriesData, platformsData] = await Promise.all([
+          getCities(),
+          getCategories(),
+          getPlatforms(),
+        ]);
+        setCities(citiesData);
+        setCategories(categoriesData);
+        setPlatforms(platformsData);
+      } catch (error) {
+        console.error("Error loading reference data:", error);
+      }
+    };
+
+    loadReferenceData();
+  }, []);
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
@@ -141,9 +163,9 @@ export default function AdEditPage() {
           telegram:
             ((ad.contactTelegram as string) ?? "").replace("@", "") || "",
           whatsapp: (ad.contactWhatsapp as string) ?? "",
-          videoFormatId: (ad as any).videoFormatId ?? undefined,
-          adFormatId: (ad as any).adFormatId ?? undefined,
-          adSubjectId: (ad as any).adSubjectId ?? undefined,
+          videoFormatId: ad.videoFormatId ?? undefined,
+          adFormatId: ad.adFormatId ?? undefined,
+          adSubjectId: ad.adSubjectId ?? undefined,
         });
       })
       .catch((err) => {
@@ -267,15 +289,15 @@ export default function AdEditPage() {
               rules={[{ required: true, message: "Выберите платформу" }]}
             >
               <div className="flex gap-3 flex-wrap">
-                {PLATFORMS.map((p) => {
-                  const selected = platform === p;
+                {platforms.map((p) => {
+                  const selected = platform === p.key;
                   return (
                     <button
-                      key={p}
+                      key={p.key}
                       type="button"
                       onClick={() => {
-                        form.setFieldValue("platform", p);
-                        setPlatform(p);
+                        form.setFieldValue("platform", p.key);
+                        setPlatform(p.key);
                       }}
                       className={`flex items-center gap-2 px-4 py-2.5 rounded-full border-2 text-sm font-medium transition-all cursor-pointer min-h-[44px] ${
                         selected
@@ -284,9 +306,9 @@ export default function AdEditPage() {
                       }`}
                     >
                       <span className="text-base leading-none">
-                        {PLATFORM_ICONS[p]}
+                        {PLATFORM_ICONS[p.key]}
                       </span>
-                      {p}
+                      {p.label}
                     </button>
                   );
                 })}
@@ -301,9 +323,9 @@ export default function AdEditPage() {
               >
                 <Select
                   placeholder="Выберите город"
-                  options={CITIES.map((c) => ({
-                    label: c,
-                    value: CITY_TO_ENUM[c] ?? c,
+                  options={cities.map((c) => ({
+                    label: c.label,
+                    value: c.key,
                   }))}
                 />
               </Form.Item>
@@ -315,9 +337,9 @@ export default function AdEditPage() {
               >
                 <Select
                   placeholder="Категория"
-                  options={CATEGORIES.map((c) => ({
-                    label: c,
-                    value: CATEGORY_TO_ENUM[c] ?? c,
+                  options={categories.map((c) => ({
+                    label: c.label,
+                    value: c.key,
                   }))}
                 />
               </Form.Item>

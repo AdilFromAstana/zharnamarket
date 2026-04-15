@@ -14,30 +14,12 @@ enum Platform {
   TikTok
   Instagram
   YouTube
+  Threads
+  Telegram
+  VK
 }
 
-enum ContentCategory {
-  KinoNarezki
-  Memy
-  Obzory
-  Podkasty
-  Geympley
-  MuzykaAtmosfera
-  Avto
-  Krasota
-  Sport
-  Multfilmy
-}
 
-enum City {
-  Almaty
-  Astana
-  Shymkent
-  Karaganda
-  Aktau
-  Pavlodar
-  AllCities
-}
 
 enum BudgetType {
   fixed
@@ -228,6 +210,81 @@ model AdSubject {
   @@map("ad_subjects")
 }
 
+/// Категория контента креатора (мемы, обзоры, геймплей и т.д.)
+model Category {
+  id          String @id @default(cuid())
+  key         String @unique // English key for internal use (e.g., "Memy")
+  label       String // Russian display label (e.g., "Мемы")
+  sortOrder   Int @default(0) // For ordering in UI
+  isActive    Boolean @default(true) // To enable/disable categories
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  creatorProfiles CreatorProfile[]
+  ads             Ad[]
+  portfolioItems  PortfolioItem[]
+
+  @@map("categories")
+}
+
+/// Город для фильтрации и локации
+model City {
+  id          String @id @default(cuid())
+  key         String @unique // English key for internal use (e.g., "Astana")
+  label       String // Russian display label (e.g., "Астана")
+  sortOrder   Int @default(0) // For ordering in UI
+  isActive    Boolean @default(true) // To enable/disable cities
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  creatorProfiles CreatorProfile[]
+  ads             Ad[]
+
+  @@map("cities")
+}
+
+/// Платформа публикации (TikTok, Instagram, YouTube)
+model PlatformRef {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  label     String
+  iconUrl   String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("platforms")
+}
+
+/// Тип бюджета объявления (fixed, per_views, revenue, negotiable)
+model BudgetTypeRef {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  label     String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("budget_types")
+}
+
+/// Бизнес-категория рекламодателя (еда, ретейл, услуги и т.д.)
+model BusinessCategory {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  label     String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("business_categories")
+}
+
 /// M2M: CreatorProfile ↔ VideoFormat
 model CreatorProfileVideoFormat {
   creatorProfileId String
@@ -329,14 +386,16 @@ model Ad {
   ownerId     String
   owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
-  // Основные поля
-  companyName   String?
-  title         String
-  description   String
-  platform      Platform
-  city          City
-  category      ContentCategory
-  status        AdStatus @default(draft)
+   // Основные поля
+   companyName   String?
+   title         String
+   description   String
+   platform      Platform
+   cityId        String?
+   city          City?       @relation(fields: [cityId], references: [id])
+   categoryId    String?
+   category      Category?   @relation(fields: [categoryId], references: [id])
+   status        AdStatus @default(draft)
 
   // Новые категорийные измерения (DB-driven справочники)
   videoFormatId String?
@@ -387,12 +446,13 @@ model Ad {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  // Связи
-  boosts        AdBoost[]
-  payments      PaymentSession[]
-  escrowAccount EscrowAccount?
-  applications  TaskApplication[]
-  submissions   VideoSubmission[]
+   // Связи
+   boosts        AdBoost[]
+   payments      PaymentSession[]
+   escrowAccount EscrowAccount?
+   applications  TaskApplication[]
+   submissions   VideoSubmission[]
+   views         AdView[]
 
   @@index([status, raisedAt])
   @@map("ads")
@@ -443,20 +503,21 @@ model CreatorProfile {
   fullName    String
   username    String?
   avatar      String?
-  bio         String?
-  city        City
-  age         Int?
-  availability Availability @default(available)
-  verified    Boolean       @default(false)
-  featured    Boolean       @default(false)
+   bio         String?
+   cityId      String?
+   city        City?         @relation(fields: [cityId], references: [id])
+   age         Int?
+   availability Availability @default(available)
+   verified    Boolean       @default(false)
+   featured    Boolean       @default(false)
 
-  // Верификация (workflow)
-  verificationStatus      String    @default("none") // none | pending | approved | rejected
-  verificationRequestedAt DateTime?
-  verificationNote        String?   // Комментарий админа при одобрении/отклонении
+   // Верификация (workflow)
+   verificationStatus      String    @default("none") // none | pending | approved | rejected
+   verificationRequestedAt DateTime?
+   verificationNote        String?   // Комментарий админа при одобрении/отклонении
 
-  // Категории контента (массив)
-  contentCategories ContentCategory[]
+   // Категории контента (массив)
+   categories Category[]
 
   // Медиа (скриншоты статистики, примеры работ и т.д.)
   screenshots String[] @default([])
@@ -488,15 +549,16 @@ model CreatorProfile {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  // Связи
-  platforms          CreatorPlatform[]
-  portfolio          PortfolioItem[]
-  priceItems         CreatorPriceItem[]
-  payments           PaymentSession[]
-  reviews            Review[]
-  contactInteractions ContactInteraction[]
-  videoFormats       CreatorProfileVideoFormat[]
-  boosts             CreatorBoost[]
+   // Связи
+   platforms          CreatorPlatform[]
+   portfolio          PortfolioItem[]
+   priceItems         CreatorPriceItem[]
+   payments           PaymentSession[]
+   reviews            Review[]
+   contactInteractions ContactInteraction[]
+   videoFormats       CreatorProfileVideoFormat[]
+   boosts             CreatorBoost[]
+   views              ProfileView[]
 
   @@index([isPublished, raisedAt])
   @@map("creator_profiles")
@@ -544,12 +606,13 @@ model PortfolioItem {
   profileId   String
   profile     CreatorProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
-  platform    Platform
-  thumbnail   String
-  videoUrl    String
-  category    ContentCategory
-  description String?
-  views       Int?
+   platform    Platform
+   thumbnail   String
+   videoUrl    String
+   categoryId  String?
+   category    Category? @relation(fields: [categoryId], references: [id])
+   description String?
+   views       Int?
 
   // Новое категорийное измерение
   videoFormatId String?
@@ -609,10 +672,8 @@ model NotificationSettings {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   emailReplies  Boolean @default(true)
-  emailTasks    Boolean @default(true)
+  emailSecurity Boolean @default(true)
   emailNews     Boolean @default(false)
-  smsImportant  Boolean @default(true)
-  pushMessages  Boolean @default(false)
 
   updatedAt DateTime @updatedAt
 
@@ -745,6 +806,49 @@ model ContactInteraction {
 
   @@unique([userId, creatorProfileId])
   @@map("contact_interactions")
+}
+
+// ─────────────────────────────────────────
+// PROFILE VIEW — просмотр профиля креатора
+// Одна запись = один уникальный просмотр (dedupe по ipHash за 30 мин).
+// Владелец профиля не пишется, боты по UA отсекаются.
+// ─────────────────────────────────────────
+
+model ProfileView {
+  id               String         @id @default(cuid())
+  creatorProfileId String
+  profile          CreatorProfile @relation(fields: [creatorProfileId], references: [id], onDelete: Cascade)
+
+  userId           String?  // null для анонимов
+  ipHash           String   // sha256(ip + VIEW_HASH_SALT) — IP не хранится в сыром виде
+  userAgent        String?
+
+  createdAt        DateTime @default(now())
+
+  @@index([creatorProfileId, createdAt])
+  @@index([creatorProfileId, ipHash, createdAt])
+  @@map("profile_views")
+}
+
+// ─────────────────────────────────────────
+// AD VIEW — просмотр объявления
+// Те же правила dedupe, что и для ProfileView.
+// ─────────────────────────────────────────
+
+model AdView {
+  id        String @id @default(cuid())
+  adId      String
+  ad        Ad     @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  userId    String?
+  ipHash    String
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([adId, createdAt])
+  @@index([adId, ipHash, createdAt])
+  @@map("ad_views")
 }
 
 // ─────────────────────────────────────────

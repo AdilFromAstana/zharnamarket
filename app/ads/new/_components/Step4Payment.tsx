@@ -1,5 +1,4 @@
 import { useState } from "react";
-import Link from "next/link";
 import { Radio } from "antd";
 import {
   CreditCardOutlined,
@@ -16,6 +15,7 @@ import { PUBLICATION_PRICE, PLATFORM_COMMISSION_RATE } from "@/lib/constants";
 import { formatPrice } from "@/lib/utils";
 import type { PromoResult } from "../_types";
 import { PROVIDER_PAYMENT_METHODS } from "../_constants";
+import TopupDrawer from "@/components/balance/TopupDrawer";
 
 type Step4PaymentProps = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -49,6 +49,7 @@ export default function Step4Payment({
 }: Step4PaymentProps) {
   const [promoExpanded, setPromoExpanded] = useState(false);
   const [showOtherMethods, setShowOtherMethods] = useState(false);
+  const [topupOpen, setTopupOpen] = useState(false);
 
   const requiredAmount = isEscrowMode
     ? (form.getFieldValue("totalBudget") ?? 0)
@@ -269,13 +270,16 @@ export default function Step4Payment({
                   <div className="text-xs text-red-500">
                     Недостаточно: {balance.toLocaleString("ru")} ₸ из{" "}
                     {requiredAmount.toLocaleString("ru")} ₸{" · "}
-                    <Link
-                      href={`/balance/topup?amount=${requiredAmount - balance}`}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setTopupOpen(true);
+                      }}
                       className="underline text-red-500 hover:text-red-700"
-                      target="_blank"
                     >
                       Пополнить
-                    </Link>
+                    </button>
                   </div>
                 )}
               </div>
@@ -327,6 +331,12 @@ export default function Step4Payment({
             : "После оплаты объявление сразу появится в ленте на 7 дней."}
         </span>
       </p>
+
+      <TopupDrawer
+        open={topupOpen}
+        onClose={() => setTopupOpen(false)}
+        initialAmount={Math.max(requiredAmount - balance, 100)}
+      />
     </div>
   );
 }

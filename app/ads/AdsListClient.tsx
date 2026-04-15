@@ -196,6 +196,11 @@ export default function AdsListClient({
         const adapted = (data.data ?? []).map(
           (ad: Record<string, unknown>) => ({
             ...ad,
+            city: (ad.city as { key?: string } | null)?.key ?? ad.city ?? null,
+            category:
+              (ad.category as { key?: string } | null)?.key ??
+              ad.category ??
+              null,
             boosts: ((ad.boosts as Array<{ boostType: string }>) ?? []).map(
               (b) => b.boostType,
             ),

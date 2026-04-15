@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseUserAgent } from "@/lib/user-agent";
+import { sendNewDeviceLoginEmail } from "@/lib/email";
 
 /**
  * Создаёт запись Session в БД при login/register/oauth.
@@ -29,6 +30,19 @@ export async function createSession(
     req.headers.get("x-real-ip") ??
     null;
 
+  // Определяем "новое" устройство до создания сессии: если у пользователя ещё
+  // не было сессии с такой комбинацией device/os/browser — это новое устройство.
+  const priorDeviceSession = await prisma.session.findFirst({
+    where: {
+      userId,
+      device: ua.device,
+      os: ua.os,
+      browser: ua.browser,
+    },
+    select: { id: true },
+  });
+  const isNewDevice = !priorDeviceSession;
+
   // Снимаем флаг isCurrent с предыдущих сессий этого пользователя
   await prisma.session.updateMany({
     where: { userId, isCurrent: true },
@@ -51,7 +65,39 @@ export async function createSession(
   // Очищаем истёкшие сессии (fire-and-forget)
   cleanupExpiredSessions(userId).catch(() => {});
 
+  // Уведомляем о новом устройстве (fire-and-forget), если включено в настройках
+  if (isNewDevice) {
+    notifyNewDeviceLogin(userId, {
+      device: ua.device,
+      os: ua.os,
+      browser: ua.browser,
+      ip,
+    }).catch(() => {});
+  }
+
   return session.id;
+}
+
+async function notifyNewDeviceLogin(
+  userId: string,
+  info: { device: string | null; os: string | null; browser: string | null; ip: string | null },
+): Promise<void> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        email: true,
+        notificationSettings: { select: { emailSecurity: true } },
+      },
+    });
+    if (!user?.email) return;
+    // По умолчанию — включено. Если настройка явно выключена — не шлём.
+    if (user.notificationSettings && !user.notificationSettings.emailSecurity) return;
+
+    await sendNewDeviceLoginEmail(user.email, { ...info, at: new Date() });
+  } catch (err) {
+    console.error("[notifyNewDeviceLogin]", err);
+  }
 }
 
 /**

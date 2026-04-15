@@ -78,15 +78,15 @@ async function main() {
     const now = new Date();
     const deadline = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // +30 дней
 
-    ad = await prisma.ad.create({
+    const adCreated = await prisma.ad.create({
       data: {
         ownerId: advertiser.id,
         companyName: "MoreViews",
         title: adTitle,
         description: `<h2><strong>Добро пожаловать в официальное баннерное задание MoreViews!</strong></h2><h2><strong>Что нужно сделать для получения выплаты?</strong></h2><p>Создайте и опубликуйте вертикальный ролик с баннером MoreViews на одной из поддерживаемых площадок.</p><p>Баннер должен быть виден на протяжении всего видео — без обрезки, без перекрытия элементами интерфейса. Запрещено уменьшать исходный размер баннера более чем на 10%.</p><p>Ваше видео должно представлять собой нарезку из русскоязычных фильмов или сериалов. Также принимается юмористический контент: нарезки из стендапов, развлекательных шоу и подкастов.</p><h2><strong>Основные правила:</strong></h2><ul><li><p>Принимаются только ролики с <strong>контентом на русском языке</strong>, ориентированные на <strong>русскоязычную аудиторию</strong>.</p></li><li><p>Не уменьшайте исходный размер баннера более чем <strong>на 10%</strong></p></li><li><p>Баннер должен полностью проиграться <strong>не менее 1 раза</strong></p></li><li><p>Соблюдайте <strong>требования к описанию и названию</strong> видео, указанные ниже.</p></li><li><p>Проверяются только ролики, опубликованные в <strong>TikTok, Instagram и YouTube Shorts</strong>.</p></li><li><p>Принимаются только ролики с баннерной интеграцией бренда MoreViews.</p></li><li><p>Элементы интерфейса приложения не должны перекрывать баннер.</p></li></ul><h2><strong>Требования к описанию видео:</strong></h2><ul><li><p>Для TikTok и Instagram в описании необходимо отметить аккаунт — @moreviews.kz</p></li><li><p>Для YouTube роликов в названии видео обязательно отметьте — @moreviews.marketplace (отметка должна быть кликабельной)</p></li></ul><p>Вы можете добавить свой текст в описание или название видео, но только после нашей отметки.</p><p><strong>Проверяйте, что отметки нашего аккаунта в соц. сетях кликабельны и ведут именно на наши страницы.</strong></p><h2><strong>В этом задании разрешено:</strong></h2><ul><li><p>Перезаливать одно видео несколько раз, в том числе на разные площадки — каждый ролик может быть оплачен.</p></li><li><p>Перезаливать видео других участников (учитывайте риск жалоб за нарушение авторских прав).</p></li><li><p>По желанию в описании профиля можно указать ссылку — <a target="_blank" rel="noopener noreferrer nofollow" href="https://moreviews.kz">moreviews.kz</a></p></li></ul><h2><strong>За контент с мультфильмами выплата не производится.</strong></h2><h2><strong>Ввиду большого количества роликов с низким вовлечением, мы оставляем за собой право отказать в выплате при экстремально низких показателях.</strong></h2><p><strong>Помните: оплата за 1 ролик — 1 раз.</strong></p><h2><strong>Всем удачи и больших просмотров!</strong></h2><p><strong>P.S. Обязательно читайте чат задания — там отвечаем на вопросы и даём советы для набора просмотров.</strong></p>`,
         platform: "Instagram",
-        city: "AllCities",
-        category: "KinoNarezki",
+        cityId: (await prisma.city.findUnique({ where: { key: "AllCities" } }))?.id,
+        categoryId: (await prisma.category.findUnique({ where: { key: "KinoNarezki" } }))?.id,
         budgetType: "per_views",
         budgetDetails: "50 ₸ за 1 000 просмотров",
         paymentMode: "escrow",
@@ -99,12 +99,14 @@ async function main() {
         publishedAt: now,
         images: [],
       },
-      include: { escrowAccount: true },
     });
+    ad = { ...adCreated, escrowAccount: null };
     console.log(`  ✓ Ad: ${adTitle}`);
   } else {
     console.log(`  ~ Ad already exists: ${adTitle}`);
   }
+
+  if (!ad) throw new Error("Failed to create or find ad");
 
   // ─── 4. EscrowAccount ──────────────────────────────────────────────────────
   // gross выплачено: 10000 (reel1) + 5100 (reel2) = 15100

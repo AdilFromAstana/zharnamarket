@@ -10,15 +10,35 @@ import {
   safeInt,
   safeFloat,
   isValidEnum,
+  isValidFromArray,
   VALID_PLATFORMS,
-  VALID_CITIES,
-  VALID_CATEGORIES,
   VALID_AVAILABILITY,
   checkLength,
   LIMITS,
   validateContacts,
 } from "@/lib/validation";
 import { distributeBoostedByTier, countBoostedBeforePage } from "@/lib/interleave-boosts";
+
+// Get valid category and city keys from database for validation
+async function getValidReferenceData() {
+  const [categories, cities] = await Promise.all([
+    prisma.category.findMany({
+      where: { isActive: true },
+      select: { key: true, label: true },
+    }),
+    prisma.city.findMany({
+      where: { isActive: true },
+      select: { key: true, label: true },
+    }),
+  ]);
+
+  return {
+    validCategoryKeys: categories.map(c => c.key),
+    validCityKeys: cities.map(c => c.key),
+    categoryLabelToKey: Object.fromEntries(categories.map(c => [c.label, c.key])),
+    cityLabelToKey: Object.fromEntries(cities.map(c => [c.label, c.key])),
+  };
+}
 
 function getCreatorInclude() {
   return {
@@ -29,6 +49,8 @@ function getCreatorInclude() {
     user: {
       select: { id: true, name: true, email: true, avatarColor: true },
     },
+    city: { select: { id: true, key: true, label: true } },
+    categories: { select: { id: true, key: true, label: true } },
   };
 }
 
@@ -42,10 +64,13 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
 
+    // Get valid reference data from database
+    const { validCityKeys, validCategoryKeys } = await getValidReferenceData();
+
     // --- Multi-select params (comma-separated DB enum codes) ---
-    const cities = parseCSV(searchParams.get("city")).filter((c) => VALID_CITIES.has(c));
+    const cities = parseCSV(searchParams.get("city")).filter((c) => validCityKeys.includes(c));
     const platforms = parseCSV(searchParams.get("platform")).filter((p) => VALID_PLATFORMS.has(p));
-    const categories = parseCSV(searchParams.get("category")).filter((c) => VALID_CATEGORIES.has(c));
+    const categories = parseCSV(searchParams.get("category")).filter((c) => validCategoryKeys.includes(c));
     const availabilities = parseCSV(searchParams.get("availability")).filter((a) => VALID_AVAILABILITY.has(a));
 
     // --- Single-value params ---
@@ -88,9 +113,9 @@ export async function GET(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
+      ...(cityFilter && { city: { key: { in: cityFilter } } }),
       ...(platformFilter && { platforms: { some: { name: { in: platformFilter } } } }),
-      ...(categoryFilter && { contentCategories: { hasSome: categoryFilter } }),
+      ...(categoryFilter && { categories: { some: { key: { in: categoryFilter } } } }),
       ...(availabilityFilter && { availability: availabilityFilter }),
     };
 
@@ -108,34 +133,33 @@ export async function GET(req: NextRequest) {
     const cityFacetWhere: any = {
       ...baseWhere,
       ...(platformFilter && { platforms: { some: { name: { in: platformFilter } } } }),
-      ...(categoryFilter && { contentCategories: { hasSome: categoryFilter } }),
+      ...(categoryFilter && { categories: { some: { key: { in: categoryFilter } } } }),
       ...(availabilityFilter && { availability: availabilityFilter }),
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const platformFacetWhere: any = {
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
-      ...(categoryFilter && { contentCategories: { hasSome: categoryFilter } }),
+      ...(cityFilter && { city: { key: cityFilter } }),
+      ...(categoryFilter && { categories: { some: { key: { in: categoryFilter } } } }),
       ...(availabilityFilter && { availability: availabilityFilter }),
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const categoryFacetWhere: any = {
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
+      ...(cityFilter && { city: { key: cityFilter } }),
       ...(platformFilter && { platforms: { some: { name: { in: platformFilter } } } }),
       ...(availabilityFilter && { availability: availabilityFilter }),
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const availabilityFacetWhere: any = {
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
+      ...(cityFilter && { city: { key: cityFilter } }),
       ...(platformFilter && { platforms: { some: { name: { in: platformFilter } } } }),
-      ...(categoryFilter && { contentCategories: { hasSome: categoryFilter } }),
+      ...(categoryFilter && { categories: { some: { key: { in: categoryFilter } } } }),
     };
 
-    // Category values for parallel counts (contentCategories is a Postgres array —
-    // groupBy not supported, so we count each known value individually)
-    const CATEGORY_VALUES = [...VALID_CATEGORIES];
+    // Category values for parallel counts (now using relation, count each known value individually)
+    const CATEGORY_VALUES = validCategoryKeys;
 
     // --- Два запроса: бустнутые + обычные, распределённые по страницам ---
     const now = new Date();
@@ -150,15 +174,14 @@ export async function GET(req: NextRequest) {
       Promise.all([
         prisma.creatorProfile.count({ where }),
         prisma.creatorProfile.count({ where: boostedWhere }),
-        prisma.creatorProfile.groupBy({ by: ["city"], where: cityFacetWhere, _count: true }),
+        prisma.creatorProfile.groupBy({ by: ["cityId"], where: cityFacetWhere, _count: true }),
         prisma.creatorProfile.groupBy({ by: ["availability"], where: availabilityFacetWhere, _count: true }),
         prisma.creatorPlatform.groupBy({ by: ["name"], where: { profile: platformFacetWhere }, _count: true }),
       ]),
       Promise.all(
         CATEGORY_VALUES.map((cat) =>
           prisma.creatorProfile.count({
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            where: { ...categoryFacetWhere, contentCategories: { has: cat as any } },
+            where: { ...categoryFacetWhere, categories: { some: { key: cat } } },
           }),
         ),
       ),
@@ -192,8 +215,19 @@ export async function GET(req: NextRequest) {
     // Бустнутые наверху (уже отсортированы по приоритету), обычные после них
     const creators = [...boostedItems, ...regularItems];
 
+    // Resolve cityId → key for facets
+    const facetCityIds = cityCounts.map((r) => r.cityId).filter((v): v is string => !!v);
+    const facetCityRecords = facetCityIds.length
+      ? await prisma.city.findMany({ where: { id: { in: facetCityIds } }, select: { id: true, key: true } })
+      : [];
+    const facetCityIdToKey = Object.fromEntries(facetCityRecords.map((r) => [r.id, r.key]));
+
     const facets = {
-      city: Object.fromEntries(cityCounts.map((r) => [r.city, r._count])),
+      city: Object.fromEntries(
+        cityCounts
+          .filter((r) => r.cityId && facetCityIdToKey[r.cityId])
+          .map((r) => [facetCityIdToKey[r.cityId!], r._count]),
+      ),
       availability: Object.fromEntries(availabilityCounts.map((r) => [r.availability, r._count])),
       platform: Object.fromEntries(platformCounts.map((r) => [r.name, r._count])),
       category: Object.fromEntries(
@@ -247,11 +281,31 @@ export async function POST(req: NextRequest) {
     if (!contentCategories?.length)
       return badRequest("Укажите хотя бы одну категорию");
 
-    // Enum validation
+    // Validate city/categories — accept EN key or RU label
+    const { validCategoryKeys, validCityKeys, categoryLabelToKey, cityLabelToKey } = await getValidReferenceData();
+
+    const resolveCityKey = (v: string): string | null => {
+      if (!v) return null;
+      if (validCityKeys.includes(v)) return v;
+      if (cityLabelToKey[v]) return cityLabelToKey[v];
+      return null;
+    };
+    const resolveCategoryKey = (v: string): string | null => {
+      if (!v) return null;
+      if (validCategoryKeys.includes(v)) return v;
+      if (categoryLabelToKey[v]) return categoryLabelToKey[v];
+      return null;
+    };
+
     for (const cat of contentCategories) {
-      if (!isValidEnum(String(cat), VALID_CATEGORIES)) {
+      if (!resolveCategoryKey(cat)) {
         return badRequest(`Недопустимая категория: ${cat}`);
       }
+    }
+
+    // City validation
+    if (city && !resolveCityKey(city)) {
+      return badRequest(`Недопустимый город: ${city}`);
     }
     for (const p of platforms) {
       if (!isValidEnum(String(p.name), VALID_PLATFORMS)) {
@@ -273,13 +327,30 @@ export async function POST(req: NextRequest) {
     const contactsErr = validateContacts(contacts);
     if (contactsErr) return badRequest(contactsErr);
 
+    // Resolve to DB IDs (accept EN key or RU label)
+    const cityKey = city ? resolveCityKey(city) : null;
+    const cityRecord = cityKey ? await prisma.city.findUnique({ where: { key: cityKey } }) : null;
+
+    const categoryIds: string[] = [];
+    for (const catInput of contentCategories ?? []) {
+      const catKey = resolveCategoryKey(catInput);
+      if (catKey) {
+        const catRecord = await prisma.category.findUnique({ where: { key: catKey } });
+        if (catRecord) {
+          categoryIds.push(catRecord.id);
+        }
+      }
+    }
+
     const profile = await prisma.creatorProfile.create({
       data: {
         userId,
         title: title.trim(),
         fullName: fullName.trim(),
-        city: city as any,
-        contentCategories: contentCategories ?? [],
+        cityId: cityRecord?.id,
+        categories: {
+          connect: categoryIds.map(id => ({ id })),
+        },
         bio: bio ?? null,
         age: age ?? null,
         username: username ?? null,

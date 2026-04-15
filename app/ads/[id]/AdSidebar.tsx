@@ -1,15 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import { Tag, Divider, Button } from "antd";
+import { Tag, Divider } from "antd";
 import {
   SendOutlined,
   PhoneOutlined,
   WhatsAppOutlined,
   MailOutlined,
-  ArrowRightOutlined,
   ShareAltOutlined,
-  TeamOutlined,
 } from "@ant-design/icons";
 import ContactButton from "@/components/ui/ContactButton";
 import VerifiedBadge from "@/components/ui/VerifiedBadge";
@@ -99,13 +96,6 @@ export default function AdSidebar({
                 {advertiserInfo.text}
               </Tag>
             </div>
-            <Link
-              href={`/profile/${ad.ownerId}`}
-              className="text-xs text-sky-500 hover:text-sky-700 transition-colors mt-1 inline-flex items-center gap-0.5"
-            >
-              Профиль заказчика{" "}
-              <ArrowRightOutlined className="text-[9px]" />
-            </Link>
           </div>
         </div>
 
@@ -113,9 +103,7 @@ export default function AdSidebar({
 
         {/* Contacts */}
         <div className="mb-4">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">
-            Контакты
-          </h3>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Контакты</h3>
           {hasContacts ? (
             <div className="flex flex-col gap-2.5">
               {ad.contacts.telegram && (

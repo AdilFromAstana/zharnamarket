@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import PublicLayout from "@/components/layout/PublicLayout";
 import { mapCreatorFromApi } from "@/lib/mappers/creator";
 import CreatorDetailClient from "./CreatorDetailClient";
+import OtherCreatorProfiles from "./OtherCreatorProfiles";
 import { prisma } from "@/lib/prisma";
 
 interface CreatorPageProps {
@@ -67,6 +68,34 @@ export async function generateMetadata({ params }: CreatorPageProps) {
   };
 }
 
+async function fetchOtherProfiles(userId: string, currentId: string) {
+  const raw = await prisma.creatorProfile.findMany({
+    where: {
+      userId,
+      isPublished: true,
+      id: { not: currentId },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 6,
+    select: {
+      id: true,
+      title: true,
+      fullName: true,
+      avatar: true,
+      city: { select: { label: true } },
+      user: { select: { avatarColor: true } },
+    },
+  });
+  return raw.map((p) => ({
+    id: p.id,
+    title: p.title,
+    fullName: p.fullName,
+    city: p.city?.label ?? "",
+    avatar: p.avatar,
+    avatarColor: p.user?.avatarColor ?? null,
+  }));
+}
+
 export default async function CreatorPage({ params }: CreatorPageProps) {
   const { id } = await params;
   const creator = await fetchCreator(id);
@@ -75,9 +104,16 @@ export default async function CreatorPage({ params }: CreatorPageProps) {
     notFound();
   }
 
+  const otherProfiles = await fetchOtherProfiles(creator.userId, creator.id);
+
   return (
     <PublicLayout>
       <CreatorDetailClient creator={creator} />
+      {otherProfiles.length > 0 && (
+        <div className="max-w-6xl mx-auto mt-8">
+          <OtherCreatorProfiles profiles={otherProfiles} />
+        </div>
+      )}
     </PublicLayout>
   );
 }

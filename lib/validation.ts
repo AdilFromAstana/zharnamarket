@@ -7,14 +7,7 @@
 
 export const VALID_PLATFORMS = new Set(["TikTok", "Instagram", "YouTube"]);
 
-export const VALID_CITIES = new Set([
-  "Almaty", "Astana", "Shymkent", "Karaganda", "Aktau", "Pavlodar", "AllCities",
-]);
-
-export const VALID_CATEGORIES = new Set([
-  "KinoNarezki", "Memy", "Obzory", "Podkasty", "Geympley",
-  "MuzykaAtmosfera", "Avto", "Krasota", "Sport", "Multfilmy",
-]);
+// NOTE: VALID_CATEGORIES and VALID_CITIES removed - now validated against database
 
 export const VALID_BUDGET_TYPES = new Set(["fixed", "per_views", "revenue", "negotiable"]);
 
@@ -47,6 +40,11 @@ export function safeFloat(value: string | null): number | null {
 /** Проверяет что значение входит в допустимый Set */
 export function isValidEnum(value: string, validSet: Set<string>): boolean {
   return validSet.has(value);
+}
+
+/** Проверяет что значение входит в массив допустимых значений */
+export function isValidFromArray(value: string, validArray: string[]): boolean {
+  return validArray.includes(value);
 }
 
 /** Проверяет формат email (базовая проверка) */

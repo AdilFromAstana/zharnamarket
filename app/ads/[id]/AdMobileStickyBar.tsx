@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 import { Spin } from "antd";
-import { HeartOutlined, HeartFilled, ThunderboltOutlined } from "@ant-design/icons";
+import {
+  HeartOutlined,
+  HeartFilled,
+  ThunderboltOutlined,
+} from "@ant-design/icons";
 import ContactButton from "@/components/ui/ContactButton";
 import type { TaskApplication } from "@/lib/types/submission";
 import EscrowMobileCTAStatus from "./EscrowMobileCTAStatus";

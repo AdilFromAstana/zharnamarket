@@ -21,6 +21,7 @@ import {
   createApplication,
   cleanupEscrowAd,
 } from "../../helpers";
+import { cityId, categoryId } from "../refs";
 
 import { GET as listApplications } from "@/app/api/tasks/[id]/applications/route";
 import { PATCH as reviewApplication } from "@/app/api/tasks/[id]/applications/[appId]/review/route";
@@ -65,8 +66,8 @@ beforeAll(async () => {
       title: "Direct Ad Apps",
       description: "Direct contact",
       platform: "TikTok",
-      city: "Almaty",
-      category: "Memy",
+      cityId: await cityId("Almaty"),
+      categoryId: await categoryId("Memy"),
       status: "active",
       budgetType: "per_views",
       paymentMode: "direct",

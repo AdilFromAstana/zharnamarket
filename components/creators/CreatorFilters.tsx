@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { CloseOutlined, FilterOutlined } from "@ant-design/icons";
-import { CITIES, PLATFORMS, CATEGORIES } from "@/lib/constants";
-import { CITY_TO_ENUM, CATEGORY_TO_ENUM } from "@/lib/enum-maps";
+import { getCities, getPlatforms, getCategories } from "@/lib/constants";
 import type { CreatorFilters, CreatorFacets } from "@/lib/types/creator";
 
 interface CreatorFiltersProps {
@@ -28,21 +27,6 @@ const SORT_OPTIONS = [
 
 const CITIES_VISIBLE = 5;
 const CATEGORIES_VISIBLE = 5;
-
-// Pre-build items: label = Russian, value = DB enum code
-const PLATFORM_ITEMS: FilterItem[] = PLATFORMS.map((p) => ({
-  label: p,
-  value: p,
-}));
-
-const CITY_ITEMS: FilterItem[] = CITIES.filter((c) => c !== "Все города").map(
-  (c) => ({ label: c, value: CITY_TO_ENUM[c] ?? c }),
-);
-
-const CATEGORY_ITEMS: FilterItem[] = CATEGORIES.map((c) => ({
-  label: c,
-  value: CATEGORY_TO_ENUM[c] ?? c,
-}));
 
 const AVAILABILITY_ITEMS: FilterItem[] = [
   { label: "Свободен", value: "available" },
@@ -379,6 +363,45 @@ export default function CreatorFiltersComponent({
   onReset,
   facets,
 }: CreatorFiltersProps) {
+  const [cities, setCities] = useState<{ key: string; label: string }[]>([]);
+  const [platforms, setPlatforms] = useState<{ key: string; label: string }[]>([]);
+  const [categories, setCategories] = useState<{ key: string; label: string }[]>([]);
+
+  useEffect(() => {
+    const loadReferenceData = async () => {
+      try {
+        const [citiesData, platformsData, categoriesData] = await Promise.all([
+          getCities(),
+          getPlatforms(),
+          getCategories(),
+        ]);
+        setCities(citiesData);
+        setPlatforms(platformsData);
+        setCategories(categoriesData);
+      } catch (error) {
+        console.error("Error loading reference data:", error);
+      }
+    };
+
+    loadReferenceData();
+  }, []);
+
+  const PLATFORM_ITEMS = useMemo<FilterItem[]>(
+    () => platforms.map((p) => ({ label: p.label, value: p.key })),
+    [platforms],
+  );
+  const CITY_ITEMS = useMemo<FilterItem[]>(
+    () =>
+      cities
+        .filter((c) => c.key !== "AllCities")
+        .map((c) => ({ label: c.label, value: c.key })),
+    [cities],
+  );
+  const CATEGORY_ITEMS = useMemo<FilterItem[]>(
+    () => categories.map((c) => ({ label: c.label, value: c.key })),
+    [categories],
+  );
+
   const hasFilters = !!(
     filters.city?.length ||
     filters.platform?.length ||

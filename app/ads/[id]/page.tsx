@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import PublicLayout from "@/components/layout/PublicLayout";
 import AdDetailClient from "./AdDetailClient";
+import OtherAdvertiserAds from "./OtherAdvertiserAds";
 
 export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
@@ -38,6 +39,8 @@ const AD_INCLUDE = {
   videoFormat: { select: { id: true, key: true, label: true, icon: true } },
   adFormat: { select: { id: true, key: true, label: true, icon: true } },
   adSubject: { select: { id: true, key: true, label: true, icon: true } },
+  city: { select: { id: true, key: true, label: true } },
+  category: { select: { id: true, key: true, label: true } },
 } as const;
 
 async function getAd(id: string): Promise<Ad | null> {
@@ -59,19 +62,50 @@ async function getAd(id: string): Promise<Ad | null> {
   }
 }
 
+async function getOtherAdvertiserAds(
+  ownerId: string,
+  currentId: string,
+): Promise<Ad[]> {
+  try {
+    const raws = await prisma.ad.findMany({
+      where: {
+        ownerId,
+        id: { not: currentId },
+        deletedAt: null,
+        status: "active",
+      },
+      include: AD_INCLUDE,
+      orderBy: { publishedAt: "desc" },
+      take: 6,
+    });
+    return raws.map(mapPrismaAdToAd);
+  } catch {
+    return [];
+  }
+}
+
 async function getRelatedAds(
   currentId: string,
   platform: string,
   category: string,
 ): Promise<Ad[]> {
   try {
+    // Get category ID from label
+    let categoryId: string | undefined;
+    if (category) {
+      const catRecord = await prisma.category.findFirst({
+        where: { label: category },
+      });
+      categoryId = catRecord?.id;
+    }
+
     const raws = await prisma.ad.findMany({
       where: {
         id: { not: currentId },
         deletedAt: null,
         status: "active",
         platform: platform as Ad["platform"],
-        category: category as Ad["category"],
+        ...(categoryId ? { categoryId } : {}),
       },
       include: AD_INCLUDE,
       orderBy: { publishedAt: "desc" },
@@ -124,8 +158,9 @@ export default async function AdPage({ params }: AdPageProps) {
   const ad = await getAd(id);
   if (!ad) notFound();
 
-  const [related, approvedSubmissions] = await Promise.all([
+  const [related, otherByAdvertiser, approvedSubmissions] = await Promise.all([
     getRelatedAds(id, ad.platform, ad.category),
+    getOtherAdvertiserAds(ad.ownerId, id),
     ad.paymentMode === "escrow"
       ? getApprovedSubmissions(id)
       : Promise.resolve([] as ApprovedSubmission[]),
@@ -144,6 +179,11 @@ export default async function AdPage({ params }: AdPageProps) {
         approvedSubmissions={approvedSubmissions}
         totalApprovedViews={totalApprovedViews}
       />
+      {otherByAdvertiser.length > 0 && (
+        <div className="max-w-6xl mx-auto mt-8">
+          <OtherAdvertiserAds ads={otherByAdvertiser} />
+        </div>
+      )}
     </PublicLayout>
   );
 }

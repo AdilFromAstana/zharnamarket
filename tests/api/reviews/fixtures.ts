@@ -5,6 +5,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { cityId } from "../refs";
 
 // ─── Creator Profile ─────────────────────────────────────────────────────────
 
@@ -15,7 +16,7 @@ export async function createPublishedProfile(userId: string) {
       title: "Test Creator Profile",
       fullName: "Test Creator",
       isPublished: true,
-      city: "Almaty",
+      cityId: await cityId("Almaty"),
       availability: "available",
       minimumRate: 50_000,
       currency: "KZT",
@@ -30,7 +31,7 @@ export async function createUnpublishedProfile(userId: string) {
       title: "Unpublished Creator Profile",
       fullName: "Hidden Creator",
       isPublished: false,
-      city: "Almaty",
+      cityId: await cityId("Almaty"),
       availability: "available",
       minimumRate: 10_000,
       currency: "KZT",

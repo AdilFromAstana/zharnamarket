@@ -71,7 +71,7 @@ function getTargetUrl(targetType: string, targetId: string): string {
   switch (targetType) {
     case "ad": return `/ads/${targetId}`;
     case "creator": return `/creators/${targetId}`;
-    case "customer": return `/profile/${targetId}`;
+    case "customer": return `/admin/users?search=${targetId}`;
     case "review": return `#review-${targetId}`;
     default: return "#";
   }

@@ -15,26 +15,9 @@ export type PaymentMode = "direct" | "escrow";
 
 export type Platform = "TikTok" | "Instagram" | "YouTube";
 
-export type ContentCategory =
-  | "KinoNarezki"
-  | "Memy"
-  | "Obzory"
-  | "Podkasty"
-  | "Geympley"
-  | "MuzykaAtmosfera"
-  | "Avto"
-  | "Krasota"
-  | "Sport"
-  | "Multfilmy";
-
-export type City =
-  | "Almaty"
-  | "Astana"
-  | "Shymkent"
-  | "Karaganda"
-  | "Aktau"
-  | "Pavlodar"
-  | "AllCities";
+// ContentCategory и City теперь хранятся в базе данных, их ключи - строки
+export type ContentCategory = string;
+export type City = string;
 
 /**
  * Тип модели оплаты в объявлении (бюджет для блогера, НЕ тариф платформы).

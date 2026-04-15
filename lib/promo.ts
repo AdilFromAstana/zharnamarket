@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/prisma";
 
-type PaymentType = "ad_publication" | "ad_boost" | "creator_publication" | "creator_boost";
+type PaymentType =
+  | "ad_publication"
+  | "ad_boost"
+  | "creator_publication"
+  | "creator_boost";
 
 export type PromoValidationSuccess = {
   valid: true;

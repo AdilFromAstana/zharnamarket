@@ -142,14 +142,27 @@ export async function createEscrowAd(
   const budget = overrides.totalBudget ?? 50_000;
   const rpm = overrides.rpm ?? 150;
 
+  const [cityRec, categoryRec] = await Promise.all([
+    prisma.city.upsert({
+      where: { key: "Almaty" },
+      update: {},
+      create: { key: "Almaty", label: "Алматы" },
+    }),
+    prisma.category.upsert({
+      where: { key: "Obzory" },
+      update: {},
+      create: { key: "Obzory", label: "Обзоры" },
+    }),
+  ]);
+
   const ad = await prisma.ad.create({
     data: {
       ownerId,
       title: "Test Escrow Ad",
       description: "Integration test escrow task description",
       platform: "TikTok",
-      city: "Almaty",
-      category: "Obzory",
+      cityId: cityRec.id,
+      categoryId: categoryRec.id,
       status: (overrides.status ?? "active") as "active",
       budgetType: "per_views",
       paymentMode: "escrow",

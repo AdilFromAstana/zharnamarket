@@ -43,13 +43,9 @@ export async function GET(
 
     if (!ad) return notFound("Объявление не найдено");
 
-    // Инкрементируем счётчик просмотров (fire-and-forget)
-    prisma.ad
-      .update({
-        where: { id },
-        data: { viewCount: { increment: 1 } },
-      })
-      .catch(() => {});
+    // Просмотры теперь учитываются отдельным роутом POST /api/ads/[id]/view
+    // с dedupe по ipHash (см. lib/views.ts). GET не инкрементирует счётчик,
+    // чтобы F5 / бот-краулеры / preflight-запросы не накручивали статистику.
 
     return NextResponse.json(ad);
   } catch (err) {

@@ -10,8 +10,6 @@ import {
 import type { BudgetType } from "@/lib/types/ad";
 import type { PaymentMethod } from "@/lib/types/payment";
 
-export const PLATFORMS = ["TikTok", "Instagram", "YouTube"];
-
 export const PLATFORM_ICONS: Record<string, React.ReactNode> = {
   TikTok: <PlaySquareOutlined />,
   Instagram: <CameraOutlined />,

@@ -60,7 +60,9 @@ export default function TelegramCallbackPage() {
         });
 
         if (!res.ok) {
-          const data = (await res.json().catch(() => ({}))) as { error?: string };
+          const data = (await res.json().catch(() => ({}))) as {
+            error?: string;
+          };
           throw new Error(data.error ?? "Ошибка входа через Telegram");
         }
 
@@ -69,7 +71,8 @@ export default function TelegramCallbackPage() {
         toast.success("Вход через Telegram выполнен!");
         router.replace("/");
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Ошибка входа через Telegram";
+        const message =
+          err instanceof Error ? err.message : "Ошибка входа через Telegram";
         toast.error(message);
         router.replace("/auth/login?error=telegram_verify_failed");
       }

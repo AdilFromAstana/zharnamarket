@@ -17,6 +17,7 @@ import {
   cleanupEscrowAd,
   cleanupBalance,
 } from "../../helpers";
+import { cityId, categoryId } from "../refs";
 
 import { POST as submitPost } from "@/app/api/tasks/[id]/submissions/route";
 
@@ -153,8 +154,8 @@ describe("POST /api/tasks/[id]/submissions", () => {
           title: "Past Deadline Ad",
           description: "Deadline passed",
           platform: "TikTok",
-          city: "Almaty",
-          category: "Memy",
+          cityId: await cityId("Almaty"),
+          categoryId: await categoryId("Memy"),
           status: "active",
           budgetType: "per_views",
           paymentMode: "escrow",
@@ -192,8 +193,8 @@ describe("POST /api/tasks/[id]/submissions", () => {
           title: "Empty Budget Ad",
           description: "Zero budget",
           platform: "TikTok",
-          city: "Almaty",
-          category: "Memy",
+          cityId: await cityId("Almaty"),
+          categoryId: await categoryId("Memy"),
           status: "active",
           budgetType: "per_views",
           paymentMode: "escrow",

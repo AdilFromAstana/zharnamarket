@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction } from "react";
+import { Dispatch, SetStateAction, useState, useEffect } from "react";
 import { Form, Input, Select, Upload, Spin } from "antd";
 import {
   CameraOutlined,
@@ -8,16 +8,14 @@ import {
 import type { FormInstance } from "antd";
 import { toast } from "sonner";
 import {
-  CITIES,
-  CATEGORIES,
+  getCities,
+  getCategories,
+  getPlatforms,
+  type RefItem,
 } from "@/lib/constants";
-import {
-  CITY_TO_ENUM,
-  CATEGORY_TO_ENUM,
-} from "@/lib/enum-maps";
 import RichTextEditor from "@/components/ui/RichTextEditor";
 import type { FormValues, CategoryOption } from "../_types";
-import { PLATFORMS, PLATFORM_ICONS } from "../_constants";
+import { PLATFORM_ICONS } from "../_constants";
 
 type Step1FormProps = {
   form: FormInstance<FormValues>;
@@ -46,6 +44,29 @@ export default function Step1Form({
   setAdImages,
   setImageUploading,
 }: Step1FormProps) {
+  const [cities, setCities] = useState<RefItem[]>([]);
+  const [categories, setCategories] = useState<RefItem[]>([]);
+  const [platforms, setPlatforms] = useState<RefItem[]>([]);
+
+  // Загружаем справочные данные
+  useEffect(() => {
+    const loadReferenceData = async () => {
+      try {
+        const [citiesData, categoriesData, platformsData] = await Promise.all([
+          getCities(),
+          getCategories(),
+          getPlatforms(),
+        ]);
+        setCities(citiesData);
+        setCategories(categoriesData);
+        setPlatforms(platformsData);
+      } catch (error) {
+        console.error("Error loading reference data:", error);
+      }
+    };
+
+    loadReferenceData();
+  }, []);
   return (
     <>
       {/* Основная информация */}
@@ -68,16 +89,16 @@ export default function Step1Form({
           rules={[{ required: true, message: "Выберите платформу" }]}
         >
           <div className="flex gap-3 flex-wrap">
-            {PLATFORMS.map((p) => {
-              const selected = values.platform === p;
+            {platforms.map((p) => {
+              const selected = values.platform === p.key;
               return (
                 <button
-                  key={p}
+                  key={p.key}
                   type="button"
                   onClick={() => {
-                    form.setFieldValue("platform", p);
-                    saveDraft({ platform: p });
-                    setValues((v) => ({ ...v, platform: p }));
+                    form.setFieldValue("platform", p.key);
+                    saveDraft({ platform: p.key });
+                    setValues((v) => ({ ...v, platform: p.key }));
                   }}
                   className={`flex items-center gap-2 px-4 py-2.5 rounded-full border-2 text-sm font-medium transition-all cursor-pointer min-h-[44px] ${
                     selected
@@ -86,9 +107,9 @@ export default function Step1Form({
                   }`}
                 >
                   <span className="text-base leading-none">
-                    {PLATFORM_ICONS[p]}
+                    {PLATFORM_ICONS[p.key]}
                   </span>
-                  {p}
+                  {p.label}
                 </button>
               );
             })}
@@ -103,9 +124,9 @@ export default function Step1Form({
           >
             <Select
               placeholder="Выберите город"
-              options={CITIES.map((c) => ({
-                label: c,
-                value: CITY_TO_ENUM[c] ?? c,
+              options={cities.map((c) => ({
+                label: c.label,
+                value: c.key,
               }))}
             />
           </Form.Item>
@@ -117,9 +138,9 @@ export default function Step1Form({
           >
             <Select
               placeholder="Категория"
-              options={CATEGORIES.map((c) => ({
-                label: c,
-                value: CATEGORY_TO_ENUM[c] ?? c,
+              options={categories.map((c) => ({
+                label: c.label,
+                value: c.key,
               }))}
             />
           </Form.Item>

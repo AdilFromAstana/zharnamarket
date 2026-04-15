@@ -8,7 +8,6 @@ import {
   EnvironmentOutlined,
   ClockCircleOutlined,
   EyeOutlined,
-  MessageOutlined,
   ArrowLeftOutlined,
   MoreOutlined,
   ShareAltOutlined,
@@ -108,6 +107,27 @@ export default function AdDetailClient({
   useEffect(() => {
     if (!authLoading) fetchApplication();
   }, [authLoading, fetchApplication]);
+
+  useEffect(() => {
+    if (isOwner) return;
+    api.post(`/api/ads/${ad.id}/view`).catch(() => {});
+  }, [ad.id, isOwner]);
+
+  const [viewsLast30, setViewsLast30] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ last30Days: number | null }>(
+        `/api/ads/${ad.id}/view-stats/public`,
+      )
+      .then((res) => {
+        if (!cancelled) setViewsLast30(res.last30Days);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [ad.id]);
 
   // ── Handlers ──────────────────────────────────────────────────
   const handleApply = async () => {
@@ -406,16 +426,10 @@ export default function AdDetailClient({
 
                 {/* Stats */}
                 <div className="mt-5 pt-4 border-t border-gray-100 flex flex-wrap items-center gap-4 md:gap-6 text-xs md:text-sm text-gray-400">
-                  {ad.metadata.viewCount > 0 && (
+                  {viewsLast30 !== null && (
                     <span className="flex items-center gap-1">
                       <EyeOutlined />
-                      {ad.metadata.viewCount} просмотров
-                    </span>
-                  )}
-                  {ad.metadata.contactClickCount > 0 && (
-                    <span className="flex items-center gap-1">
-                      <MessageOutlined />
-                      {ad.metadata.contactClickCount} обращений
+                      {viewsLast30} просмотров за 30 дней
                     </span>
                   )}
                   {ad.publishedAt && (

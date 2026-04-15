@@ -39,7 +39,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import PublicLayout from "@/components/layout/PublicLayout";
-import { CITIES, PLATFORMS, CATEGORIES } from "@/lib/constants";
+import { getCities, getPlatforms, getCategories } from "@/lib/constants";
 import { api } from "@/lib/api-client";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 
@@ -72,13 +72,21 @@ const QUICK_ADD_FORMATS = [
   "Полный рекламный ролик",
 ];
 
-function buildPriceLabel(platform: string | undefined, adFormatLabel: string): string {
+function buildPriceLabel(
+  platform: string | undefined,
+  adFormatLabel: string,
+): string {
   return platform ? `${platform} — ${adFormatLabel}` : adFormatLabel;
 }
 
-function parsePriceLabelForForm(label: string): { platform?: string; adFormatLabel: string } {
-  const platforms = ["TikTok", "Instagram", "YouTube"];
-  for (const p of platforms) {
+function parsePriceLabelForForm(
+  label: string,
+  platformKeys: string[],
+): {
+  platform?: string;
+  adFormatLabel: string;
+} {
+  for (const p of platformKeys) {
     if (label.startsWith(`${p} — `)) {
       return { platform: p, adFormatLabel: label.slice(p.length + 3) };
     }
@@ -93,9 +101,10 @@ interface CreatorApiResponse {
   username?: string | null;
   bio?: string | null;
   avatar?: string | null;
-  city: string;
+  city?: { id: string; key: string; label: string } | string | null;
   availability: string;
-  contentCategories: string[];
+  categories?: Array<{ id: string; key: string; label: string }>;
+  contentCategories?: string[];
   minimumRate: number;
   negotiable: boolean;
   contactTelegram?: string | null;
@@ -125,6 +134,9 @@ function EditCreatorPageInner() {
   const [screenshotUrls, setScreenshotUrls] = useState<string[]>([]);
   const [screenshotUploading, setScreenshotUploading] = useState(false);
   const [adFormats, setAdFormats] = useState<AdFormatOption[]>([]);
+  const [cities, setCities] = useState<{ key: string; label: string }[]>([]);
+  const [platformsOptions, setPlatformsOptions] = useState<{ key: string; label: string }[]>([]);
+  const [categories, setCategories] = useState<{ key: string; label: string }[]>([]);
 
   const profileId = searchParams.get("id") ?? "";
 
@@ -135,6 +147,26 @@ function EditCreatorPageInner() {
       .catch(() => {});
   }, []);
 
+  // Загружаем справочные данные
+  useEffect(() => {
+    const loadReferenceData = async () => {
+      try {
+        const [citiesData, platformsData, categoriesData] = await Promise.all([
+          getCities(),
+          getPlatforms(),
+          getCategories(),
+        ]);
+        setCities(citiesData);
+        setPlatformsOptions(platformsData);
+        setCategories(categoriesData);
+      } catch (error) {
+        console.error("Error loading reference data:", error);
+      }
+    };
+
+    loadReferenceData();
+  }, []);
+
   useEffect(() => {
     if (!profileId) {
       setNotFound(true);
@@ -143,9 +175,12 @@ function EditCreatorPageInner() {
     }
 
     setLoadingData(true);
-    api
-      .get<CreatorApiResponse>(`/api/creators/${profileId}`)
-      .then((data) => {
+    Promise.all([
+      api.get<CreatorApiResponse>(`/api/creators/${profileId}`),
+      getPlatforms(),
+    ])
+      .then(([data, platformsData]) => {
+        const platformKeys = platformsData.map((p) => p.key);
         setCreator(data);
         setPortfolioItems(data.portfolio ?? []);
         setAvatarUrl(data.avatar ?? null);
@@ -157,9 +192,13 @@ function EditCreatorPageInner() {
           fullName: data.fullName,
           username: data.username ?? "",
           bio: data.bio ?? "",
-          city: data.city,
+          city:
+            typeof data.city === "string"
+              ? data.city
+              : (data.city?.key ?? undefined),
           availability: data.availability,
-          contentCategories: data.contentCategories,
+          contentCategories:
+            data.categories?.map((c) => c.key) ?? data.contentCategories ?? [],
           minimumRate: data.minimumRate,
           negotiable: data.negotiable,
           telegram: data.contactTelegram ?? "",
@@ -177,7 +216,7 @@ function EditCreatorPageInner() {
         // Предзаполнение прайс-листа — парсим label обратно в platform + adFormatLabel
         if (data.priceItems && data.priceItems.length > 0) {
           formValues.priceItems = data.priceItems.map((item) => ({
-            ...parsePriceLabelForForm(item.label),
+            ...parsePriceLabelForForm(item.label, platformKeys),
             price: item.price,
           }));
         }
@@ -203,26 +242,28 @@ function EditCreatorPageInner() {
 
     setLoading(true);
     try {
-      const rawItems = (values.priceItems as { platform?: string; adFormatLabel: string; price: number }[] | undefined) ?? [];
+      const rawItems =
+        (values.priceItems as
+          | { platform?: string; adFormatLabel: string; price: number }[]
+          | undefined) ?? [];
       const priceItems = rawItems
         .filter((item) => item?.adFormatLabel && item?.price > 0)
         .map((item) => ({
           label: buildPriceLabel(item.platform, item.adFormatLabel),
           price: item.price,
         }));
-      const minimumRate = priceItems.length > 0
-        ? Math.min(...priceItems.map((i) => i.price))
-        : (values.minimumRate ?? 0);
+      const minimumRate =
+        priceItems.length > 0
+          ? Math.min(...priceItems.map((i) => i.price))
+          : (values.minimumRate ?? 0);
 
       // Собираем данные платформ из form fields
-      const platforms = PLATFORMS
-        .map((p) => ({
-          name: p,
-          handle: (values[`${p}_handle`] as string) || "",
-          url: "",
-          followers: (values[`${p}_followers`] as number) ?? null,
-        }))
-        .filter((p) => p.handle); // только заполненные
+      const platforms = platformsOptions.map((p) => ({
+        name: p.key,
+        handle: (values[`${p.key}_handle`] as string) || "",
+        url: "",
+        followers: (values[`${p.key}_followers`] as number) ?? null,
+      })).filter((p) => p.handle); // только заполненные
 
       // Собираем портфолио (только с videoUrl)
       const portfolio = portfolioItems
@@ -315,11 +356,17 @@ function EditCreatorPageInner() {
               return false;
             }}
           >
-            <Button size="small" icon={<CameraOutlined />} loading={avatarUploading}>
+            <Button
+              size="small"
+              icon={<CameraOutlined />}
+              loading={avatarUploading}
+            >
               {avatarUploading ? "Загрузка..." : "Загрузить фото"}
             </Button>
           </Upload>
-          <p className="text-xs text-gray-400 mt-1">JPG, PNG, GIF или WebP до 5 МБ</p>
+          <p className="text-xs text-gray-400 mt-1">
+            JPG, PNG, GIF или WebP до 5 МБ
+          </p>
         </div>
       </div>
 
@@ -348,7 +395,7 @@ function EditCreatorPageInner() {
         <Input.TextArea rows={3} placeholder="Расскажите о себе..." />
       </Form.Item>
       <Form.Item label="Город" name="city" rules={[{ required: true }]}>
-        <Select options={CITIES.map((c) => ({ label: c, value: c }))} />
+        <Select options={cities.map((c) => ({ label: c.label, value: c.key }))} />
       </Form.Item>
       <Form.Item label="Статус доступности" name="availability">
         <Radio.Group buttonStyle="solid" className="flex flex-wrap gap-y-2">
@@ -374,19 +421,19 @@ function EditCreatorPageInner() {
       <p className="text-sm text-gray-500">
         Укажите ваши платформы и ссылки на профили
       </p>
-      {PLATFORMS.map((platform) => (
-        <Card key={platform} size="small" className="border-gray-200">
-          <div className="font-medium text-gray-900 mb-3">{platform}</div>
+      {platformsOptions.map((platform) => (
+        <Card key={platform.key} size="small" className="border-gray-200">
+          <div className="font-medium text-gray-900 mb-3">{platform.label}</div>
           <div className="space-y-2">
-            <Form.Item name={`${platform}_handle`} noStyle>
+            <Form.Item name={`${platform.key}_handle`} noStyle>
               <Space.Compact style={{ width: "100%" }}>
                 <Typography.Text className="flex items-center px-3 bg-gray-50 border border-gray-300 border-r-0 rounded-l-md text-gray-500 text-sm">
                   @
                 </Typography.Text>
-                <Input placeholder={`${platform.toLowerCase()}_handle`} />
+                <Input placeholder={`${platform.key.toLowerCase()}_handle`} />
               </Space.Compact>
             </Form.Item>
-            <Form.Item name={`${platform}_followers`} noStyle>
+            <Form.Item name={`${platform.key}_followers`} noStyle>
               <InputNumber
                 placeholder="Подписчиков"
                 style={{ width: "100%" }}
@@ -408,18 +455,17 @@ function EditCreatorPageInner() {
       >
         <Select
           mode="multiple"
-          options={CATEGORIES.map((c) => ({ label: c, value: c }))}
+              options={categories.map((c) => ({ label: c.label, value: c.key }))}
           placeholder="Выберите категории"
         />
       </Form.Item>
 
       {/* Прайс-лист по форматам */}
       <div>
-        <p className="text-sm font-medium text-gray-700 mb-1">
-          Прайс-лист
-        </p>
+        <p className="text-sm font-medium text-gray-700 mb-1">Прайс-лист</p>
         <p className="text-xs text-gray-400 mb-3">
-          Укажи платформу (необязательно), тип рекламы и цену — заказчик сразу поймёт стоимость
+          Укажи платформу (необязательно), тип рекламы и цену — заказчик сразу
+          поймёт стоимость
         </p>
 
         <Form.List name="priceItems">
@@ -427,7 +473,9 @@ function EditCreatorPageInner() {
             <>
               {/* Быстрое добавление */}
               <div className="flex flex-wrap gap-1.5 mb-3">
-                <span className="text-xs text-gray-400 self-center shrink-0">Добавить:</span>
+                <span className="text-xs text-gray-400 self-center shrink-0">
+                  Добавить:
+                </span>
                 {QUICK_ADD_FORMATS.map((fmt) => (
                   <button
                     key={fmt}
@@ -448,7 +496,10 @@ function EditCreatorPageInner() {
                       allowClear
                       placeholder="Платф."
                       style={{ width: 100 }}
-                      options={["TikTok", "Instagram", "YouTube"].map((p) => ({ label: p, value: p }))}
+                      options={platformsOptions.map((p) => ({
+                        label: p.label,
+                        value: p.key,
+                      }))}
                     />
                   </Form.Item>
 
@@ -461,9 +512,14 @@ function EditCreatorPageInner() {
                   >
                     <AutoComplete
                       placeholder="Тип рекламы"
-                      options={adFormats.map((f) => ({ label: f.label, value: f.label }))}
+                      options={adFormats.map((f) => ({
+                        label: f.label,
+                        value: f.label,
+                      }))}
                       filterOption={(input, option) =>
-                        (option?.label as string)?.toLowerCase().includes(input.toLowerCase())
+                        (option?.label as string)
+                          ?.toLowerCase()
+                          .includes(input.toLowerCase())
                       }
                     />
                   </Form.Item>
@@ -577,12 +633,23 @@ function EditCreatorPageInner() {
         </p>
         <div className="flex flex-wrap gap-2 mb-3">
           {screenshotUrls.map((url, i) => (
-            <div key={i} className="relative w-24 h-24 rounded-lg overflow-hidden border border-gray-200 group">
+            <div
+              key={i}
+              className="relative w-24 h-24 rounded-lg overflow-hidden border border-gray-200 group"
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={url} alt={`Скриншот ${i + 1}`} className="w-full h-full object-cover" />
+              <img
+                src={url}
+                alt={`Скриншот ${i + 1}`}
+                className="w-full h-full object-cover"
+              />
               <button
                 type="button"
-                onClick={() => setScreenshotUrls((prev) => prev.filter((_, idx) => idx !== i))}
+                onClick={() =>
+                  setScreenshotUrls((prev) =>
+                    prev.filter((_, idx) => idx !== i),
+                  )
+                }
                 className="absolute top-1 right-1 w-5 h-5 bg-black/50 hover:bg-black/70 text-white rounded-full flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 <DeleteOutlined />
@@ -599,32 +666,38 @@ function EditCreatorPageInner() {
             return false;
           }}
         >
-          <Button size="small" icon={<PlusOutlined />} loading={screenshotUploading}>
+          <Button
+            size="small"
+            icon={<PlusOutlined />}
+            loading={screenshotUploading}
+          >
             {screenshotUploading ? "Загрузка..." : "Добавить скриншот"}
           </Button>
         </Upload>
       </div>
 
       {/* Ссылки на видео */}
-      <p className="text-sm font-medium text-gray-700 mb-1">
-        Ссылки на видео
-      </p>
+      <p className="text-sm font-medium text-gray-700 mb-1">Ссылки на видео</p>
       <p className="text-sm text-gray-500 mb-4">
         Минимум 3 работы для публикации в каталоге. Добавляйте ссылки на
         реальные видео.
       </p>
       {portfolioItems.map((item, idx) => (
-        <Card key={item.id ?? `new-${idx}`} size="small" className="border-gray-200 mb-3">
+        <Card
+          key={item.id ?? `new-${idx}`}
+          size="small"
+          className="border-gray-200 mb-3"
+        >
           <div className="flex items-center justify-between mb-2">
-            <div className="font-medium text-gray-900">
-              Работа #{idx + 1}
-            </div>
+            <div className="font-medium text-gray-900">Работа #{idx + 1}</div>
             <Button
               type="text"
               danger
               size="small"
               icon={<DeleteOutlined />}
-              onClick={() => setPortfolioItems((prev) => prev.filter((_, i) => i !== idx))}
+              onClick={() =>
+                setPortfolioItems((prev) => prev.filter((_, i) => i !== idx))
+              }
             />
           </div>
           <div className="space-y-2">
@@ -633,13 +706,15 @@ function EditCreatorPageInner() {
               placeholder="Ссылка на видео (TikTok, YouTube, Instagram)"
               onChange={(e) =>
                 setPortfolioItems((prev) =>
-                  prev.map((p, i) => (i === idx ? { ...p, videoUrl: e.target.value } : p)),
+                  prev.map((p, i) =>
+                    i === idx ? { ...p, videoUrl: e.target.value } : p,
+                  ),
                 )
               }
             />
             <Select
               value={item.category || undefined}
-              options={CATEGORIES.map((c) => ({ label: c, value: c }))}
+          options={categories.map((c) => ({ label: c.label, value: c.key }))}
               placeholder="Категория"
               style={{ width: "100%" }}
               onChange={(val) =>
@@ -654,7 +729,9 @@ function EditCreatorPageInner() {
               rows={1}
               onChange={(e) =>
                 setPortfolioItems((prev) =>
-                  prev.map((p, i) => (i === idx ? { ...p, description: e.target.value } : p)),
+                  prev.map((p, i) =>
+                    i === idx ? { ...p, description: e.target.value } : p,
+                  ),
                 )
               }
             />

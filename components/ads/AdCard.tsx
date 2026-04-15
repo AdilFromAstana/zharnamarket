@@ -85,7 +85,7 @@ const BOOST_FLOATING_BADGE: Record<
 // ── Стили карточки ───────────────────────────────────────────────────────────
 function getCardClass(boost: BoostLevel): string {
   const base =
-    "relative rounded-[32px] p-5 transition-all duration-300 flex flex-col";
+    "relative rounded-[32px] p-5 transition-all duration-300 flex flex-col h-full";
 
   if (boost === "premium") {
     return cn(
@@ -187,9 +187,9 @@ export default function AdCard({ ad }: AdCardProps) {
   };
 
   return (
-    <Link href={`/ads/${ad.id}`} className="block group">
+    <Link href={`/ads/${ad.id}`} className="block group h-full">
       {/* Relative wrapper нужен для floating badge */}
-      <div className="relative">
+      <div className="relative h-full">
         {/* ── Floating badge ────────────────────────────────────────────── */}
         {badgeConfig && (
           <div
@@ -258,14 +258,14 @@ export default function AdCard({ ad }: AdCardProps) {
 
             {/* ── Заголовок ─────────────────────────────────────────────── */}
             <div className="flex-1 min-w-0">
-              <h3 className="font-bold text-[17px] leading-snug pr-8 text-slate-900 line-clamp-2 group-hover:text-sky-700 transition-colors">
+              <h3 className="font-bold text-[17px] leading-snug pr-8 text-slate-900 line-clamp-2 min-h-[44px] group-hover:text-sky-700 transition-colors">
                 {ad.title}
               </h3>
             </div>
           </div>
 
           {/* ── Бюджет + CTA ──────────────────────────────────────────── */}
-          <div className="mt-5 flex flex-col justify-between gap-3">
+          <div className="mt-auto pt-5 flex flex-col justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[10px] text-slate-400 font-medium uppercase tracking-tighter mb-0.5">
                 Бюджет
@@ -335,12 +335,6 @@ export default function AdCard({ ad }: AdCardProps) {
                 <Navigation size={13} className={getNavIconClass(boostLevel)} />
                 {ENUM_TO_CITY[ad.city] ?? ad.city}
               </div>
-              {ad.metadata.viewCount > 0 && (
-                <div className="flex items-center gap-1.5">
-                  <Eye size={13} />
-                  {ad.metadata.viewCount}
-                </div>
-              )}
             </div>
             <button
               onClick={(e) => {

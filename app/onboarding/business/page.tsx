@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Form, Input, Button, Select, Steps, Space, Typography } from "antd";
 import {
   SendOutlined,
@@ -8,7 +8,7 @@ import {
   ShopOutlined,
 } from "@ant-design/icons";
 import { useRouter } from "next/navigation";
-import { CITIES, BUSINESS_CATEGORIES } from "@/lib/constants";
+import { getCities, getBusinessCategories } from "@/lib/constants";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
 
@@ -24,6 +24,17 @@ interface OnboardingFormValues {
 export default function BusinessOnboardingPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [cities, setCities] = useState<{ key: string; label: string }[]>([]);
+  const [businessCategories, setBusinessCategories] = useState<{ key: string; label: string }[]>([]);
+
+  useEffect(() => {
+    Promise.all([getCities(), getBusinessCategories()])
+      .then(([c, b]) => {
+        setCities(c);
+        setBusinessCategories(b);
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async (values: OnboardingFormValues) => {
     setLoading(true);
@@ -93,7 +104,7 @@ export default function BusinessOnboardingPage() {
             >
               <Select
                 placeholder="Выберите город"
-                options={CITIES.map((c) => ({ label: c, value: c }))}
+                options={cities.map((c) => ({ label: c.label, value: c.key }))}
               />
             </Form.Item>
 
@@ -104,9 +115,9 @@ export default function BusinessOnboardingPage() {
             >
               <Select
                 placeholder="Еда и напитки, Ретейл..."
-                options={BUSINESS_CATEGORIES.map((c) => ({
-                  label: c,
-                  value: c,
+                options={businessCategories.map((c) => ({
+                  label: c.label,
+                  value: c.key,
                 }))}
               />
             </Form.Item>

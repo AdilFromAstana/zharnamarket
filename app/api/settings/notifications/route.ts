@@ -12,7 +12,6 @@ export async function GET(req: NextRequest) {
       where: { userId },
     });
 
-    // Если настроек нет — создаём с дефолтными значениями
     if (!settings) {
       settings = await prisma.notificationSettings.create({
         data: { userId },
@@ -33,30 +32,20 @@ export async function PUT(req: NextRequest) {
     if (!userId) return unauthorized();
 
     const body = await req.json();
-    const {
-      emailReplies,
-      emailTasks,
-      emailNews,
-      smsImportant,
-      pushMessages,
-    } = body;
+    const { emailReplies, emailSecurity, emailNews } = body;
 
     const settings = await prisma.notificationSettings.upsert({
       where: { userId },
       create: {
         userId,
         emailReplies: emailReplies ?? true,
-        emailTasks: emailTasks ?? true,
+        emailSecurity: emailSecurity ?? true,
         emailNews: emailNews ?? false,
-        smsImportant: smsImportant ?? true,
-        pushMessages: pushMessages ?? false,
       },
       update: {
         ...(emailReplies !== undefined && { emailReplies }),
-        ...(emailTasks !== undefined && { emailTasks }),
+        ...(emailSecurity !== undefined && { emailSecurity }),
         ...(emailNews !== undefined && { emailNews }),
-        ...(smsImportant !== undefined && { smsImportant }),
-        ...(pushMessages !== undefined && { pushMessages }),
       },
     });
 

@@ -17,6 +17,7 @@ import {
   createSubmission,
   cleanupEscrowAd,
 } from "../../helpers";
+import { cityId, categoryId } from "../refs";
 
 import { POST as cancelPost } from "@/app/api/tasks/[id]/cancel/route";
 
@@ -93,8 +94,8 @@ describe("POST /api/tasks/[id]/cancel", () => {
           title: "Direct Ad Cancel",
           description: "Direct ad cancel test",
           platform: "TikTok",
-          city: "Almaty",
-          category: "Memy",
+          cityId: await cityId("Almaty"),
+          categoryId: await categoryId("Memy"),
           status: "active",
           budgetType: "per_views",
           paymentMode: "direct",

@@ -74,6 +74,101 @@ async function main() {
   // ─── Справочники категорий ─────────────────────────────────────────────────
   console.log("\n📂 Seeding category dimensions...");
 
+  // Seed Categories
+  const categorySeeds = [
+    { key: "KinoNarezki", label: "Кино-нарезки", sortOrder: 1 },
+    { key: "Memy", label: "Мемы", sortOrder: 2 },
+    { key: "Obzory", label: "Обзоры", sortOrder: 3 },
+    { key: "Podkasty", label: "Подкасты", sortOrder: 4 },
+    { key: "Geympley", label: "Геймплей", sortOrder: 5 },
+    { key: "MuzykaAtmosfera", label: "Музыка/Атмосфера", sortOrder: 6 },
+    { key: "Avto", label: "Авто", sortOrder: 7 },
+    { key: "Krasota", label: "Красота", sortOrder: 8 },
+    { key: "Sport", label: "Спорт", sortOrder: 9 },
+    { key: "Multfilmy", label: "Мультфильмы", sortOrder: 10 },
+  ];
+
+  for (const cat of categorySeeds) {
+    await prisma.category.upsert({
+      where: { key: cat.key },
+      update: { label: cat.label, sortOrder: cat.sortOrder },
+      create: cat,
+    });
+  }
+  console.log(`  ✓ Categories: ${categorySeeds.length} records`);
+
+  // Seed Cities
+  const citySeeds = [
+    { key: "Almaty", label: "Алматы", sortOrder: 1 },
+    { key: "Astana", label: "Астана", sortOrder: 2 },
+    { key: "Shymkent", label: "Шымкент", sortOrder: 3 },
+    { key: "Karaganda", label: "Караганда", sortOrder: 4 },
+    { key: "Aktau", label: "Актау", sortOrder: 5 },
+    { key: "Pavlodar", label: "Павлодар", sortOrder: 6 },
+    { key: "AllCities", label: "Все города", sortOrder: 7 },
+  ];
+
+  for (const city of citySeeds) {
+    await prisma.city.upsert({
+      where: { key: city.key },
+      update: { label: city.label, sortOrder: city.sortOrder },
+      create: city,
+    });
+  }
+  console.log(`  ✓ Cities: ${citySeeds.length} records`);
+
+  // Seed Platforms
+  const platformSeeds = [
+    { key: "TikTok", label: "TikTok", sortOrder: 1 },
+    { key: "Instagram", label: "Instagram", sortOrder: 2 },
+    { key: "YouTube", label: "YouTube", sortOrder: 3 },
+  ];
+  for (const p of platformSeeds) {
+    await prisma.platformRef.upsert({
+      where: { key: p.key },
+      update: { label: p.label, sortOrder: p.sortOrder },
+      create: { ...p, iconUrl: null },
+    });
+  }
+  console.log(`  ✓ Platforms: ${platformSeeds.length} records`);
+
+  // Seed BudgetTypes
+  const budgetTypeSeeds = [
+    { key: "fixed", label: "Фиксированная цена", sortOrder: 1 },
+    { key: "per_views", label: "За просмотры", sortOrder: 2 },
+    { key: "revenue", label: "Доход", sortOrder: 3 },
+    { key: "negotiable", label: "Договорная", sortOrder: 4 },
+  ];
+  for (const b of budgetTypeSeeds) {
+    await prisma.budgetTypeRef.upsert({
+      where: { key: b.key },
+      update: { label: b.label, sortOrder: b.sortOrder },
+      create: b,
+    });
+  }
+  console.log(`  ✓ BudgetTypes: ${budgetTypeSeeds.length} records`);
+
+  // Seed BusinessCategories
+  const businessCategorySeeds = [
+    { key: "EdaNapitki", label: "Еда и напитки", sortOrder: 1 },
+    { key: "Retail", label: "Ретейл", sortOrder: 2 },
+    { key: "Uslugi", label: "Услуги", sortOrder: 3 },
+    { key: "IT", label: "IT", sortOrder: 4 },
+    { key: "KrasotaZdorovie", label: "Красота и здоровье", sortOrder: 5 },
+    { key: "SportFitnes", label: "Спорт и фитнес", sortOrder: 6 },
+    { key: "Avto", label: "Авто", sortOrder: 7 },
+    { key: "Nedvizhimost", label: "Недвижимость", sortOrder: 8 },
+    { key: "Drugoe", label: "Другое", sortOrder: 9 },
+  ];
+  for (const bc of businessCategorySeeds) {
+    await prisma.businessCategory.upsert({
+      where: { key: bc.key },
+      update: { label: bc.label, sortOrder: bc.sortOrder },
+      create: bc,
+    });
+  }
+  console.log(`  ✓ BusinessCategories: ${businessCategorySeeds.length} records`);
+
   for (const vf of VIDEO_FORMAT_SEED) {
     await prisma.videoFormat.upsert({
       where: { key: vf.key },
@@ -277,6 +372,14 @@ async function main() {
     if (!existing) {
       const now = new Date();
       const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+      // Look up city and category IDs
+      const cityKey = CITY_MAP[ad.city] ?? ad.city;
+      const categoryKey = CAT_MAP[ad.category] ?? ad.category;
+
+      const cityRecord = await prisma.city.findUnique({ where: { key: cityKey } });
+      const categoryRecord = await prisma.category.findUnique({ where: { key: categoryKey } });
+
       await prisma.ad.create({
         data: {
           ownerId,
@@ -284,8 +387,8 @@ async function main() {
           title: ad.title,
           description: ad.description,
           platform: ad.platform as any,
-          city: (CITY_MAP[ad.city] ?? ad.city) as any,
-          category: (CAT_MAP[ad.category] ?? ad.category) as any,
+          cityId: cityRecord?.id,
+          categoryId: categoryRecord?.id,
           budgetType: ad.budgetType as any,
           budgetFrom: ad.budgetFrom ?? null,
           budgetTo: ad.budgetTo ?? null,
@@ -433,6 +536,14 @@ async function main() {
     if (!existing) {
       const now = new Date();
       const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 дней
+
+      // Look up city and category IDs
+      const cityKey = CITY_MAP[ad.city] ?? ad.city;
+      const categoryKey = CAT_MAP[ad.category] ?? ad.category;
+
+      const cityRecord = await prisma.city.findUnique({ where: { key: cityKey } });
+      const categoryRecord = await prisma.category.findUnique({ where: { key: categoryKey } });
+
       await prisma.ad.create({
         data: {
           ownerId,
@@ -440,8 +551,8 @@ async function main() {
           title: ad.title,
           description: ad.description,
           platform: ad.platform as any,
-          city: (CITY_MAP[ad.city] ?? ad.city) as any,
-          category: (CAT_MAP[ad.category] ?? ad.category) as any,
+          cityId: cityRecord?.id,
+          categoryId: categoryRecord?.id,
           budgetType: ad.budgetType as any,
           budgetFrom: ad.budgetFrom ?? null,
           budgetTo: ad.budgetTo ?? null,
@@ -561,16 +672,30 @@ async function main() {
       where: { userId, title: creator.title },
     });
     if (!existing) {
+      // Look up city ID
+      const cityKey = CITY_MAP[creator.city] ?? creator.city;
+      const cityRecord = await prisma.city.findUnique({ where: { key: cityKey } });
+
+      // Look up category IDs
+      const categoryIds: string[] = [];
+      for (const catLabel of creator.categories) {
+        const catKey = CAT_MAP[catLabel] ?? catLabel;
+        const catRecord = await prisma.category.findUnique({ where: { key: catKey } });
+        if (catRecord) {
+          categoryIds.push(catRecord.id);
+        }
+      }
+
       await prisma.creatorProfile.create({
         data: {
           userId,
           title: creator.title,
           fullName: creator.fullName,
-          city: (CITY_MAP[creator.city] ?? creator.city) as any,
+          cityId: cityRecord?.id,
           bio: creator.bio,
-          contentCategories: creator.categories.map(
-            (c) => CAT_MAP[c] ?? c,
-          ) as any[],
+          categories: {
+            connect: categoryIds.map(id => ({ id })),
+          },
           minimumRate: creator.minimumRate,
           negotiable: true,
           isPublished: creator.isPublished,
@@ -628,10 +753,15 @@ async function main() {
     if (existingCount < 8) {
       // Удаляем старые и пересоздаём все 8
       await prisma.portfolioItem.deleteMany({ where: { profileId: maratProfile.id } });
+      // Get category IDs for portfolio items
+      const avtoCategory = await prisma.category.findUnique({ where: { key: "Avto" } });
+      const obzoryCategory = await prisma.category.findUnique({ where: { key: "Obzory" } });
+      const podkastyCategory = await prisma.category.findUnique({ where: { key: "Podkasty" } });
+
       const portfolioItems = [
         {
           platform: "YouTube" as const,
-          category: "Avto" as const,
+          categoryId: avtoCategory?.id,
           thumbnail: "https://picsum.photos/seed/marat1/400/711",
           videoUrl: "https://youtube.com/watch?v=example1",
           description: "Toyota Camry 75 — обзор + тест-драйв (Toyota KZ)",
@@ -639,7 +769,7 @@ async function main() {
         },
         {
           platform: "YouTube" as const,
-          category: "Avto" as const,
+          categoryId: avtoCategory?.id,
           thumbnail: "https://picsum.photos/seed/marat2/400/711",
           videoUrl: "https://youtube.com/watch?v=example2",
           description: "Shell Kazakhstan — интеграция в обзор автомоек",
@@ -647,7 +777,7 @@ async function main() {
         },
         {
           platform: "TikTok" as const,
-          category: "Avto" as const,
+          categoryId: avtoCategory?.id,
           thumbnail: "https://picsum.photos/seed/marat3/400/711",
           videoUrl: "https://tiktok.com/@marat_auto/video/example3",
           description: "Camry 100K км — хук + нарратив (Kolesa.kz)",
@@ -655,7 +785,7 @@ async function main() {
         },
         {
           platform: "TikTok" as const,
-          category: "Obzory" as const,
+          categoryId: obzoryCategory?.id,
           thumbnail: "https://picsum.photos/seed/marat4/400/711",
           videoUrl: "https://tiktok.com/@marat_auto/video/example4",
           description: "Топ-5 авто до 5 млн тенге — разбор",
@@ -663,7 +793,7 @@ async function main() {
         },
         {
           platform: "YouTube" as const,
-          category: "Obzory" as const,
+          categoryId: obzoryCategory?.id,
           thumbnail: "https://picsum.photos/seed/marat5/400/711",
           videoUrl: "https://youtube.com/watch?v=example5",
           description: "Честный обзор Kia K5 после 50К пробега",
@@ -671,7 +801,7 @@ async function main() {
         },
         {
           platform: "TikTok" as const,
-          category: "Avto" as const,
+          categoryId: avtoCategory?.id,
           thumbnail: "https://picsum.photos/seed/marat6/400/711",
           videoUrl: "https://tiktok.com/@marat_auto/video/example6",
           description: "BMW vs Mercedes — что берут в KZ?",
@@ -679,7 +809,7 @@ async function main() {
         },
         {
           platform: "YouTube" as const,
-          category: "Obzory" as const,
+          categoryId: obzoryCategory?.id,
           thumbnail: "https://picsum.photos/seed/marat7/400/711",
           videoUrl: "https://youtube.com/watch?v=example7",
           description: "Автосервис в Алматы — скрытая камера",
@@ -687,7 +817,7 @@ async function main() {
         },
         {
           platform: "YouTube" as const,
-          category: "Podkasty" as const,
+          categoryId: podkastyCategory?.id,
           thumbnail: "https://picsum.photos/seed/marat8/400/711",
           videoUrl: "https://youtube.com/watch?v=example8",
           description: "Подкаст: как я стал авто-блогером в Казахстане",
@@ -707,43 +837,9 @@ async function main() {
   }
 
   // ─── Миграция: ContentCategory → VideoFormat для существующих объявлений ────
-  console.log("\n🔄 Migrating ContentCategory → VideoFormat...");
-  const categoryToVideoFormatKey: Record<string, string> = {
-    KinoNarezki: "FilmClips",
-    Memy: "Memes",
-    Obzory: "Reviews",
-    Podkasty: "PodcastClips",
-    Geympley: "Gameplay",
-    MuzykaAtmosfera: "FilmClips", // closest match
-    Avto: "Reviews",              // closest match
-    Krasota: "Blog",              // closest match
-    Sport: "Reviews",             // closest match
-    Multfilmy: "Animation",
-  };
-
-  // Get all VideoFormat records
-  const allVFs = await prisma.videoFormat.findMany({ select: { id: true, key: true } });
-  const vfKeyToId = Object.fromEntries(allVFs.map((vf) => [vf.key, vf.id]));
-
-  // Migrate Ads without videoFormatId
-  const adsToMigrate = await prisma.ad.findMany({
-    where: { videoFormatId: null },
-    select: { id: true, category: true },
-  });
-
-  let adsMigrated = 0;
-  for (const ad of adsToMigrate) {
-    const vfKey = categoryToVideoFormatKey[ad.category];
-    const vfId = vfKey ? vfKeyToId[vfKey] : undefined;
-    if (vfId) {
-      await prisma.ad.update({
-        where: { id: ad.id },
-        data: { videoFormatId: vfId },
-      });
-      adsMigrated++;
-    }
-  }
-  console.log(`  ✓ Ads migrated: ${adsMigrated}/${adsToMigrate.length}`);
+  // NOTE: Migration commented out since we're changing to new Category/City relations
+  // This would need to be updated to work with the new schema
+  console.log("\n🔄 Migration skipped - new schema uses Category/City relations");
 
   console.log("\n✅ Seed completed!");
 }

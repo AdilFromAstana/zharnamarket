@@ -15,6 +15,7 @@ import {
   buildRequest,
   cleanupEscrowAd,
 } from "../../helpers";
+import { cityId, categoryId } from "../refs";
 
 import { POST as escrowPay } from "@/app/api/payments/ads/[id]/escrow/route";
 import { POST as webhook } from "@/app/api/payments/webhook/route";
@@ -51,8 +52,8 @@ async function createDraftEscrowAd(ownerId: string, totalBudget = 50_000) {
       title: "Draft Escrow Ad",
       description: "Draft escrow task for payment tests",
       platform: "TikTok",
-      city: "Almaty",
-      category: "Obzory",
+      cityId: await cityId("Almaty"),
+      categoryId: await categoryId("Obzory"),
       status: "draft",
       budgetType: "per_views",
       paymentMode: "escrow",
@@ -122,8 +123,8 @@ describe("POST /api/payments/ads/[id]/escrow", () => {
           title: "Direct Ad",
           description: "Not escrow",
           platform: "TikTok",
-          city: "Almaty",
-          category: "Memy",
+          cityId: await cityId("Almaty"),
+          categoryId: await categoryId("Memy"),
           status: "draft",
           budgetType: "per_views",
           paymentMode: "direct",

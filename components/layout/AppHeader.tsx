@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Drawer, Dropdown, Button } from "antd";
+import { api } from "@/lib/api-client";
+import TopupDrawer from "@/components/balance/TopupDrawer";
 import {
   UserOutlined,
   SettingOutlined,
@@ -90,6 +92,16 @@ export default function AppHeader() {
   const router = useRouter();
   const { user, isLoggedIn, isLoading, isAdmin, logout } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [topupOpen, setTopupOpen] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isLoggedIn || isAdmin) return;
+    api
+      .get<{ balance: { current: number } }>("/api/balance")
+      .then((d) => setWalletBalance(d.balance.current))
+      .catch(() => {});
+  }, [isLoggedIn, isAdmin, topupOpen]);
 
   // Дропдаун «+ Создать» — два действия для авторизованных пользователей
   const createMenuItems: MenuProps["items"] = [
@@ -149,7 +161,7 @@ export default function AppHeader() {
         {
           key: "settings",
           icon: <SettingOutlined />,
-          label: <Link href="/settings">Настройки</Link>,
+          label: <Link href="/cabinet/settings">Настройки</Link>,
         },
         { type: "divider" },
         {
@@ -167,23 +179,14 @@ export default function AppHeader() {
           label: <Link href="/cabinet">Мой кабинет</Link>,
         },
         {
-          key: "profile",
-          icon: <UserOutlined />,
-          label: user?.id ? (
-            <Link href={`/profile/${user.id}`}>Мой профиль</Link>
-          ) : (
-            <span className="text-gray-400">Мой профиль</span>
-          ),
-        },
-        {
           key: "balance",
           icon: <WalletOutlined />,
-          label: <Link href="/balance">Кошелёк</Link>,
+          label: <Link href="/cabinet/balance">Кошелёк</Link>,
         },
         {
           key: "settings",
           icon: <SettingOutlined />,
-          label: <Link href="/settings">Настройки</Link>,
+          label: <Link href="/cabinet/settings">Настройки</Link>,
         },
         { type: "divider" },
         {
@@ -199,19 +202,20 @@ export default function AppHeader() {
     <>
       <header className="sticky top-0 z-50 bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14 md:h-16">
-            {/* Логотип */}
-            <Link href="/" className="flex items-center gap-2 shrink-0">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-white font-bold text-xl shadow-lg">
-                V
-              </div>
-              <span className="font-bold text-gray-900 text-base tracking-tight">
-                viral-wall
-              </span>
-            </Link>
+          <div className="flex items-center justify-between h-14 md:h-16 gap-4">
+            {/* Левая группа: логотип + навигация */}
+            <div className="flex items-center gap-8 min-w-0">
+              <Link href="/" className="flex items-center gap-2 shrink-0">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-white font-bold text-xl shadow-lg">
+                  Z
+                </div>
+                <span className="font-bold text-gray-900 text-base tracking-tight">
+                  zharnamarket
+                </span>
+              </Link>
 
-            {/* Nav — только desktop */}
-            <nav className="hidden md:flex items-center gap-6">
+              {/* Nav — только desktop */}
+              <nav className="hidden md:flex items-center gap-1">
               {isAdmin
                 ? ADMIN_NAV_LINKS.map((link) => {
                     const isActive = link.exact
@@ -223,36 +227,60 @@ export default function AppHeader() {
                         key={link.href}
                         href={link.href}
                         className={cn(
-                          "text-sm font-medium transition-colors",
+                          "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
                           isActive
-                            ? "text-amber-700 font-semibold"
-                            : "text-gray-500 hover:text-gray-900",
+                            ? "bg-amber-50 text-amber-700"
+                            : "text-gray-600 hover:text-gray-900 hover:bg-gray-50",
                         )}
                       >
                         {link.label}
                       </Link>
                     );
                   })
-                : NAV_LINKS.map((link) => (
-                    <Link
-                      key={link.href}
-                      href={link.href}
-                      className={cn(
-                        "text-sm font-medium transition-colors",
-                        pathname?.startsWith(link.href)
-                          ? "text-gray-900 font-semibold"
-                          : "text-gray-500 hover:text-gray-900",
-                      )}
-                    >
-                      {link.label}
-                    </Link>
-                  ))}
-            </nav>
+                : NAV_LINKS.map((link) => {
+                    const isActive = pathname?.startsWith(link.href);
+                    return (
+                      <Link
+                        key={link.href}
+                        href={link.href}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                          isActive
+                            ? "bg-sky-50 text-sky-700"
+                            : "text-gray-600 hover:text-gray-900 hover:bg-gray-50",
+                        )}
+                      >
+                        {link.label}
+                      </Link>
+                    );
+                  })}
+              </nav>
+            </div>
 
             {/* Правая часть */}
             <div className="flex items-center gap-2">
-              {/* Кнопка «+ Создать» с дропдауном — desktop (скрыта для админа) */}
-              {!isAdmin && (
+              {/* Кошелёк-пилюля — desktop, только для авторизованных не-админов */}
+              {!isLoading && isLoggedIn && !isAdmin && (
+                <Link
+                  href="/cabinet/balance"
+                  className="hidden md:flex items-center h-9 rounded-full border border-gray-200 bg-gray-50 px-3 gap-1.5 text-sm font-semibold text-gray-900 hover:text-emerald-600 hover:border-gray-300 transition-colors"
+                  title="Кошелёк"
+                >
+                  <WalletOutlined style={{ color: "#10b981" }} />
+                  <span>
+                    {walletBalance === null
+                      ? "—"
+                      : walletBalance.toLocaleString("ru")}
+                  </span>
+                  <span className="text-xs font-normal text-gray-400">₸</span>
+                </Link>
+              )}
+
+              {/* Кнопка «+ Создать» с дропдауном — desktop (скрыта для админа, гостей и на страницах создания) */}
+              {!isAdmin &&
+                isLoggedIn &&
+                !pathname?.startsWith("/ads/new") &&
+                !pathname?.startsWith("/creators/new") && (
                 <Dropdown
                   menu={{ items: createMenuItems }}
                   trigger={["click"]}
@@ -292,18 +320,20 @@ export default function AppHeader() {
 
               {/* Кнопки входа для неавторизованных (desktop) */}
               {!isLoading && !isLoggedIn && (
-                <div className="hidden md:flex items-center gap-2">
-                  <Link href="/auth/login">
-                    <Button type="text" icon={<LoginOutlined />}>
-                      Войти
-                    </Button>
+                <div className="hidden md:flex items-center gap-3">
+                  <Link
+                    href="/auth/register"
+                    className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+                  >
+                    Регистрация
                   </Link>
-                  <Link href="/auth/register">
+                  <Link href="/auth/login">
                     <Button
                       type="primary"
+                      icon={<LoginOutlined />}
                       style={{ background: "#0EA5E9", borderColor: "#0EA5E9" }}
                     >
-                      Регистрация
+                      Войти
                     </Button>
                   </Link>
                 </div>
@@ -313,7 +343,7 @@ export default function AppHeader() {
               <Button
                 type="text"
                 icon={<MenuOutlined />}
-                className="!w-11 !h-11 md:hidden flex items-center justify-center"
+                className="!w-11 !h-11 !flex md:!hidden items-center justify-center"
                 onClick={() => setDrawerOpen(true)}
                 aria-label="Открыть меню"
               />
@@ -398,7 +428,7 @@ export default function AppHeader() {
                 Аккаунт
               </p>
               <Link
-                href="/settings"
+                href="/cabinet/settings"
                 onClick={() => setDrawerOpen(false)}
                 className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
               >
@@ -465,40 +495,46 @@ export default function AppHeader() {
               {/* Кошелёк — только для авторизованных */}
               {isLoggedIn && (
                 <Link
-                  href="/balance"
+                  href="/cabinet/balance"
                   onClick={() => setDrawerOpen(false)}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors",
-                    pathname?.startsWith("/balance")
+                    "flex items-center justify-between gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors",
+                    pathname?.startsWith("/cabinet/balance")
                       ? "bg-sky-50 text-sky-700"
                       : "text-gray-700 hover:bg-gray-50",
                   )}
                 >
-                  <span className="text-base">
-                    <WalletOutlined />
+                  <span className="flex items-center gap-3">
+                    <span className="text-base">
+                      <WalletOutlined />
+                    </span>
+                    Кошелёк
                   </span>
-                  Кошелёк
+                  {walletBalance !== null && (
+                    <span className="text-xs font-semibold text-emerald-600">
+                      {walletBalance.toLocaleString("ru")} ₸
+                    </span>
+                  )}
                 </Link>
               )}
 
-              {/* Мой профиль — только для авторизованных */}
-              {isLoggedIn && user?.id && (
-                <Link
-                  href={`/profile/${user.id}`}
-                  onClick={() => setDrawerOpen(false)}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors",
-                    pathname?.startsWith("/profile")
-                      ? "bg-sky-50 text-sky-700"
-                      : "text-gray-700 hover:bg-gray-50",
-                  )}
+              {/* Быстрое пополнение — мобильный пункт */}
+              {isLoggedIn && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDrawerOpen(false);
+                    setTopupOpen(true);
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-emerald-700 hover:bg-emerald-50 transition-colors text-left"
                 >
                   <span className="text-base">
-                    <UserOutlined />
+                    <PlusOutlined />
                   </span>
-                  Мой профиль
-                </Link>
+                  Пополнить кошелёк
+                </button>
               )}
+
             </nav>
 
             {/* CTA — создать */}
@@ -556,7 +592,7 @@ export default function AppHeader() {
                   Аккаунт
                 </p>
                 <Link
-                  href="/settings"
+                  href="/cabinet/settings"
                   onClick={() => setDrawerOpen(false)}
                   className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
                 >
@@ -579,6 +615,8 @@ export default function AppHeader() {
           </>
         )}
       </Drawer>
+
+      <TopupDrawer open={topupOpen} onClose={() => setTopupOpen(false)} />
     </>
   );
 }

@@ -93,6 +93,14 @@ async function main() {
       continue;
     }
 
+    // Lookup city + categories by key
+    const cityRec = c.city
+      ? await prisma.city.findUnique({ where: { key: c.city } })
+      : null;
+    const catRecords = c.categories?.length
+      ? await prisma.category.findMany({ where: { key: { in: c.categories as string[] } } })
+      : [];
+
     // Создаём профиль
     const profile = await prisma.creatorProfile.create({
       data: {
@@ -100,11 +108,11 @@ async function main() {
         title: c.title,
         fullName: c.fullName,
         bio: c.bio,
-        city: c.city as any,
+        cityId: cityRec?.id,
         age: c.age,
         availability: c.availability as any,
         verified: c.verified,
-        contentCategories: c.categories as any[],
+        categories: { connect: catRecords.map((r) => ({ id: r.id })) },
         minimumRate: c.minimumRate,
         negotiable: true,
         isPublished: true,

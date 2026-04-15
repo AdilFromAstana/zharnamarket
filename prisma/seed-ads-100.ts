@@ -49,6 +49,12 @@ async function main() {
     }
   }
 
+  // Подгружаем справочники городов и категорий (key → id)
+  const cityRows = await prisma.city.findMany({ select: { id: true, key: true } });
+  const categoryRows = await prisma.category.findMany({ select: { id: true, key: true } });
+  const cityIdByKey: Record<string, string> = Object.fromEntries(cityRows.map((c) => [c.key, c.id]));
+  const categoryIdByKey: Record<string, string> = Object.fromEntries(categoryRows.map((c) => [c.key, c.id]));
+
   // Создаём объявления
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
@@ -71,8 +77,8 @@ async function main() {
           title: ad.title,
           description: ad.description,
           platform: ad.platform as any,
-          city: ad.city as any,
-          category: ad.category as any,
+          cityId: cityIdByKey[ad.city] ?? null,
+          categoryId: categoryIdByKey[ad.category] ?? null,
           budgetType: ad.budgetType as any,
           budgetFrom: ad.budgetFrom ?? null,
           budgetTo: ad.budgetTo ?? null,

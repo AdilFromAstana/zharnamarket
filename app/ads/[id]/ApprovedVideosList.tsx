@@ -135,13 +135,7 @@ function EmptyState() {
   );
 }
 
-function PlatformIcon({
-  url,
-  className,
-}: {
-  url: string;
-  className?: string;
-}) {
+function PlatformIcon({ url, className }: { url: string; className?: string }) {
   const p = detectPlatform(url);
   if (p === "instagram") return <InstagramIcon className={className} />;
   if (p === "tiktok") return <TikTokIcon className={className} />;

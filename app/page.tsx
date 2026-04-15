@@ -4,9 +4,12 @@ import PublicLayout from "@/components/layout/PublicLayout";
 
 export const dynamic = "force-dynamic";
 import AdCard from "@/components/ads/AdCard";
+import CreatorCard from "@/components/creators/CreatorCard";
 import { mapPrismaAdToAd } from "@/lib/mappers/ad";
+import { mapCreatorFromApi } from "@/lib/mappers/creator";
 import { prisma } from "@/lib/prisma";
 import type { Ad } from "@/lib/types/ad";
+import type { CreatorProfile } from "@/lib/types/creator";
 
 export const metadata = {
   metadataBase: new URL("https://viraladds.kz"),
@@ -83,6 +86,11 @@ async function fetchLatestAds(): Promise<Ad[]> {
             },
           },
         },
+        city: true,
+        category: true,
+        videoFormat: true,
+        adFormat: true,
+        adSubject: true,
       },
     });
     return ads.map(mapPrismaAdToAd);
@@ -92,12 +100,38 @@ async function fetchLatestAds(): Promise<Ad[]> {
   }
 }
 
+async function fetchLatestCreators(): Promise<CreatorProfile[]> {
+  try {
+    const now = new Date();
+    const raws = await prisma.creatorProfile.findMany({
+      where: { isPublished: true },
+      orderBy: { createdAt: "desc" },
+      take: 6,
+      include: {
+        platforms: true,
+        portfolio: { orderBy: { createdAt: "desc" }, take: 4 },
+        priceItems: { orderBy: { sortOrder: "asc" } },
+        boosts: { where: { expiresAt: { gte: now } } },
+        user: { select: { avatarColor: true } },
+        city: { select: { id: true, key: true, label: true } },
+        categories: { select: { id: true, key: true, label: true } },
+      },
+    });
+    return raws.map(mapCreatorFromApi);
+  } catch (err) {
+    console.error("[fetchLatestCreators]", err);
+    return [];
+  }
+}
+
 export default async function HomePage() {
-  const [latestAds, adsCount, creatorsCount] = await Promise.all([
-    fetchLatestAds(),
-    prisma.ad.count({ where: { status: "active", deletedAt: null } }),
-    prisma.creatorProfile.count({ where: { isPublished: true } }),
-  ]);
+  const [latestAds, latestCreators, adsCount, creatorsCount] =
+    await Promise.all([
+      fetchLatestAds(),
+      fetchLatestCreators(),
+      prisma.ad.count({ where: { status: "active", deletedAt: null } }),
+      prisma.creatorProfile.count({ where: { isPublished: true } }),
+    ]);
 
   const stats = [
     { label: "Объявлений", value: String(adsCount) },
@@ -188,6 +222,28 @@ export default async function HomePage() {
           ))}
         </div>
       </section>
+
+      {/* Свежие креаторы */}
+      {latestCreators.length > 0 && (
+        <section className="mb-10 md:mb-12">
+          <div className="flex items-center justify-between mb-4 md:mb-6">
+            <h2 className="text-xl md:text-2xl font-bold text-gray-900">
+              Свежие креаторы
+            </h2>
+            <Link
+              href="/creators"
+              className="text-sky-600 text-sm hover:underline shrink-0 ml-4"
+            >
+              Все →
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {latestCreators.map((creator) => (
+              <CreatorCard key={creator.id} creator={creator} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* CTA-баннер — призыв к регистрации */}
       <section className="bg-gradient-to-r from-sky-500 to-blue-600 rounded-2xl p-6 md:p-8 text-center text-white">

@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { badRequest, serverError } from "@/lib/auth";
 import { LIMITS } from "@/lib/validation";
+import { sendPasswordChangedEmail } from "@/lib/email";
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,7 +28,11 @@ export async function POST(req: NextRequest) {
         passwordResetToken: tokenHash,
         passwordResetExpires: { gt: new Date() },
       },
-      select: { id: true },
+      select: {
+        id: true,
+        email: true,
+        notificationSettings: { select: { emailSecurity: true } },
+      },
     });
 
     if (!user) {
@@ -54,6 +59,16 @@ export async function POST(req: NextRequest) {
     await prisma.session.deleteMany({
       where: { userId: user.id },
     });
+
+    // Подтверждающее письмо (если включены security-уведомления)
+    if (
+      user.email &&
+      (!user.notificationSettings || user.notificationSettings.emailSecurity)
+    ) {
+      sendPasswordChangedEmail(user.email).catch((err) => {
+        console.error("[sendPasswordChangedEmail]", err);
+      });
+    }
 
     return NextResponse.json({
       message: "Пароль успешно обновлён. Войдите с новым паролем.",

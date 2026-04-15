@@ -13,6 +13,7 @@ import {
   trackUser,
   cleanup,
 } from "../../helpers";
+import { cityId } from "../refs";
 
 import { POST as publishCreator } from "@/app/api/payments/creators/[id]/publish/route";
 import { POST as webhook } from "@/app/api/payments/webhook/route";
@@ -43,7 +44,7 @@ async function createUnpublishedProfile(userId: string) {
       title: "Test Creator Profile",
       fullName: "Test Creator",
       isPublished: false,
-      city: "Almaty",
+      cityId: await cityId("Almaty"),
       availability: "available",
       minimumRate: 50_000,
       currency: "KZT",
@@ -59,7 +60,7 @@ async function createPublishedProfile(userId: string) {
       fullName: "Published Creator",
       isPublished: true,
       publishedAt: new Date(),
-      city: "Almaty",
+      cityId: await cityId("Almaty"),
       availability: "available",
       minimumRate: 30_000,
       currency: "KZT",

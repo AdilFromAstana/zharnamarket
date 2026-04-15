@@ -101,9 +101,9 @@ export async function GET(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
+      ...(cityFilter && { city: { is: { key: cityFilter } } }),
       ...(platformFilter && { platform: platformFilter }),
-      ...(categoryFilter && { category: categoryFilter }),
+      ...(categoryFilter && { category: { is: { key: categoryFilter } } }),
       ...(budgetTypeFilter && { budgetType: budgetTypeFilter }),
       ...(paymentModeFilter && { paymentMode: paymentModeFilter }),
       ...(videoFormatFilter && { videoFormatId: videoFormatFilter }),
@@ -128,10 +128,12 @@ export async function GET(req: NextRequest) {
       ...(adFormatFilter && { adFormatId: adFormatFilter }),
       ...(adSubjectFilter && { adSubjectId: adSubjectFilter }),
     };
+    const cityRelFilter = cityFilter ? { is: { key: cityFilter } } : undefined;
+    const categoryRelFilter = categoryFilter ? { is: { key: categoryFilter } } : undefined;
     const platformFacetWhere = {
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
-      ...(categoryFilter && { category: categoryFilter }),
+      ...(cityRelFilter && { city: cityRelFilter }),
+      ...(categoryRelFilter && { category: categoryRelFilter }),
       ...(budgetTypeFilter && { budgetType: budgetTypeFilter }),
       ...(paymentModeFilter && { paymentMode: paymentModeFilter }),
       ...newDimFilters,
@@ -139,14 +141,14 @@ export async function GET(req: NextRequest) {
     const cityFacetWhere = {
       ...baseWhere,
       ...(platformFilter && { platform: platformFilter }),
-      ...(categoryFilter && { category: categoryFilter }),
+      ...(categoryRelFilter && { category: categoryRelFilter }),
       ...(budgetTypeFilter && { budgetType: budgetTypeFilter }),
       ...(paymentModeFilter && { paymentMode: paymentModeFilter }),
       ...newDimFilters,
     };
     const categoryFacetWhere = {
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
+      ...(cityRelFilter && { city: cityRelFilter }),
       ...(platformFilter && { platform: platformFilter }),
       ...(budgetTypeFilter && { budgetType: budgetTypeFilter }),
       ...(paymentModeFilter && { paymentMode: paymentModeFilter }),
@@ -154,17 +156,17 @@ export async function GET(req: NextRequest) {
     };
     const budgetTypeFacetWhere = {
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
+      ...(cityRelFilter && { city: cityRelFilter }),
       ...(platformFilter && { platform: platformFilter }),
-      ...(categoryFilter && { category: categoryFilter }),
+      ...(categoryRelFilter && { category: categoryRelFilter }),
       ...(paymentModeFilter && { paymentMode: paymentModeFilter }),
       ...newDimFilters,
     };
     const paymentModeFacetWhere = {
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
+      ...(cityRelFilter && { city: cityRelFilter }),
       ...(platformFilter && { platform: platformFilter }),
-      ...(categoryFilter && { category: categoryFilter }),
+      ...(categoryRelFilter && { category: categoryRelFilter }),
       ...(budgetTypeFilter && { budgetType: budgetTypeFilter }),
       ...(videoFormatFilter && { videoFormatId: videoFormatFilter }),
       ...(adFormatFilter && { adFormatId: adFormatFilter }),
@@ -173,9 +175,9 @@ export async function GET(req: NextRequest) {
     // New dimension facets (each excludes its own filter, includes everything else)
     const allFiltersExceptDim = (exclude: string) => ({
       ...baseWhere,
-      ...(cityFilter && { city: cityFilter }),
+      ...(cityRelFilter && { city: cityRelFilter }),
       ...(platformFilter && { platform: platformFilter }),
-      ...(categoryFilter && { category: categoryFilter }),
+      ...(categoryRelFilter && { category: categoryRelFilter }),
       ...(budgetTypeFilter && { budgetType: budgetTypeFilter }),
       ...(paymentModeFilter && { paymentMode: paymentModeFilter }),
       ...(exclude !== "videoFormat" && videoFormatFilter && { videoFormatId: videoFormatFilter }),
@@ -208,6 +210,8 @@ export async function GET(req: NextRequest) {
       videoFormat: { select: { id: true, key: true, label: true, icon: true } },
       adFormat: { select: { id: true, key: true, label: true, icon: true } },
       adSubject: { select: { id: true, key: true, label: true, icon: true } },
+      city: { select: { id: true, key: true, label: true } },
+      category: { select: { id: true, key: true, label: true } },
     };
 
     // Считаем total + totalBoosted + фасеты параллельно
@@ -219,8 +223,8 @@ export async function GET(req: NextRequest) {
         prisma.ad.count({ where }),
         prisma.ad.count({ where: boostedWhere }),
         prisma.ad.groupBy({ by: ["platform"], where: platformFacetWhere, _count: true }),
-        prisma.ad.groupBy({ by: ["city"], where: cityFacetWhere, _count: true }),
-        prisma.ad.groupBy({ by: ["category"], where: categoryFacetWhere, _count: true }),
+        prisma.ad.groupBy({ by: ["cityId"], where: cityFacetWhere, _count: true }),
+        prisma.ad.groupBy({ by: ["categoryId"], where: categoryFacetWhere, _count: true }),
         prisma.ad.groupBy({ by: ["budgetType"], where: budgetTypeFacetWhere, _count: true }),
         prisma.ad.groupBy({ by: ["paymentMode"], where: paymentModeFacetWhere, _count: true }),
         prisma.ad.groupBy({ by: ["videoFormatId"], where: { ...videoFormatFacetWhere, videoFormatId: { not: null } }, _count: true }),
@@ -252,15 +256,56 @@ export async function GET(req: NextRequest) {
 
     const ads = [...boostedItems, ...regularItems];
 
+    // Resolve cuid ids → keys for facet maps
+    const cityIds = cityCounts.map((r) => r.cityId).filter((v): v is string => !!v);
+    const categoryIds = categoryCounts.map((r) => r.categoryId).filter((v): v is string => !!v);
+    const videoFormatIdsFacet = videoFormatCounts.map((r) => r.videoFormatId).filter((v): v is string => !!v);
+    const adFormatIdsFacet = adFormatCounts.map((r) => r.adFormatId).filter((v): v is string => !!v);
+    const adSubjectIdsFacet = adSubjectCounts.map((r) => r.adSubjectId).filter((v): v is string => !!v);
+
+    const [cityRecords, categoryRecords, videoFormatRecords, adFormatRecords, adSubjectRecords] = await Promise.all([
+      cityIds.length ? prisma.city.findMany({ where: { id: { in: cityIds } }, select: { id: true, key: true } }) : Promise.resolve([]),
+      categoryIds.length ? prisma.category.findMany({ where: { id: { in: categoryIds } }, select: { id: true, key: true } }) : Promise.resolve([]),
+      videoFormatIdsFacet.length ? prisma.videoFormat.findMany({ where: { id: { in: videoFormatIdsFacet } }, select: { id: true, key: true } }) : Promise.resolve([]),
+      adFormatIdsFacet.length ? prisma.adFormat.findMany({ where: { id: { in: adFormatIdsFacet } }, select: { id: true, key: true } }) : Promise.resolve([]),
+      adSubjectIdsFacet.length ? prisma.adSubject.findMany({ where: { id: { in: adSubjectIdsFacet } }, select: { id: true, key: true } }) : Promise.resolve([]),
+    ]);
+
+    const cityIdToKey = Object.fromEntries(cityRecords.map((r) => [r.id, r.key]));
+    const categoryIdToKey = Object.fromEntries(categoryRecords.map((r) => [r.id, r.key]));
+    const videoFormatIdToKey = Object.fromEntries(videoFormatRecords.map((r) => [r.id, r.key]));
+    const adFormatIdToKey = Object.fromEntries(adFormatRecords.map((r) => [r.id, r.key]));
+    const adSubjectIdToKey = Object.fromEntries(adSubjectRecords.map((r) => [r.id, r.key]));
+
     const facets = {
       platform: Object.fromEntries(platformCounts.map((r) => [r.platform, r._count])),
-      city: Object.fromEntries(cityCounts.map((r) => [r.city, r._count])),
-      category: Object.fromEntries(categoryCounts.map((r) => [r.category, r._count])),
+      city: Object.fromEntries(
+        cityCounts
+          .filter((r) => r.cityId && cityIdToKey[r.cityId])
+          .map((r) => [cityIdToKey[r.cityId!], r._count]),
+      ),
+      category: Object.fromEntries(
+        categoryCounts
+          .filter((r) => r.categoryId && categoryIdToKey[r.categoryId])
+          .map((r) => [categoryIdToKey[r.categoryId!], r._count]),
+      ),
       budgetType: Object.fromEntries(budgetTypeCounts.map((r) => [r.budgetType, r._count])),
       paymentMode: Object.fromEntries(paymentModeCounts.map((r) => [r.paymentMode, r._count])),
-      videoFormat: Object.fromEntries(videoFormatCounts.map((r) => [r.videoFormatId!, r._count])),
-      adFormat: Object.fromEntries(adFormatCounts.map((r) => [r.adFormatId!, r._count])),
-      adSubject: Object.fromEntries(adSubjectCounts.map((r) => [r.adSubjectId!, r._count])),
+      videoFormat: Object.fromEntries(
+        videoFormatCounts
+          .filter((r) => r.videoFormatId && videoFormatIdToKey[r.videoFormatId])
+          .map((r) => [videoFormatIdToKey[r.videoFormatId!], r._count]),
+      ),
+      adFormat: Object.fromEntries(
+        adFormatCounts
+          .filter((r) => r.adFormatId && adFormatIdToKey[r.adFormatId])
+          .map((r) => [adFormatIdToKey[r.adFormatId!], r._count]),
+      ),
+      adSubject: Object.fromEntries(
+        adSubjectCounts
+          .filter((r) => r.adSubjectId && adSubjectIdToKey[r.adSubjectId])
+          .map((r) => [adSubjectIdToKey[r.adSubjectId!], r._count]),
+      ),
     };
 
     return NextResponse.json({
@@ -373,6 +418,16 @@ export async function POST(req: NextRequest) {
       select: { companyName: true, displayName: true },
     });
 
+    // Resolve city/category — accept RU label or EN key
+    const cityKey = toDbCity(city);
+    const categoryKey = toDbCategory(category);
+    const [cityRecord, categoryRecord] = await Promise.all([
+      cityKey ? prisma.city.findUnique({ where: { key: cityKey } }) : null,
+      categoryKey ? prisma.category.findUnique({ where: { key: categoryKey } }) : null,
+    ]);
+    if (!cityRecord) return badRequest(`Недопустимый город: ${city}`);
+    if (!categoryRecord) return badRequest(`Недопустимая категория: ${category}`);
+
     const ad = await prisma.ad.create({
       data: {
         ownerId: userId,
@@ -383,8 +438,8 @@ export async function POST(req: NextRequest) {
         title: title.trim(),
         description: description.trim(),
         platform,
-        city: toDbCity(city) as any,
-        category: toDbCategory(category) as any,
+        cityId: cityRecord.id,
+        categoryId: categoryRecord.id,
         budgetType,
         budgetFrom: budgetFrom ?? null,
         budgetTo: budgetTo ?? null,

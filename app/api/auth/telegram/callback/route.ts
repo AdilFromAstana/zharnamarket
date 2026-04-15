@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
-import { signAccessToken, signRefreshToken, badRequest, serverError } from "@/lib/auth";
+import {
+  signAccessToken,
+  signRefreshToken,
+  badRequest,
+  serverError,
+} from "@/lib/auth";
 import { setAuthCookies } from "@/lib/cookies";
 import { createSession } from "@/lib/sessions";
 import { randomAvatarGradient } from "@/lib/utils";
@@ -127,10 +132,7 @@ export async function POST(req: NextRequest) {
         );
       }
       if (user.isDeleted) {
-        return NextResponse.json(
-          { error: "Аккаунт удалён." },
-          { status: 403 },
-        );
+        return NextResponse.json({ error: "Аккаунт удалён." }, { status: 403 });
       }
 
       user = await prisma.user.update({

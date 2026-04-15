@@ -8,7 +8,6 @@ export default function robots(): MetadataRoute.Robots {
         allow: "/",
         disallow: [
           "/cabinet",
-          "/settings",
           "/ads/new",
           "/ads/manage",
           "/creators/new",
