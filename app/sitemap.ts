@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-const BASE_URL = "https://viraladds.kz";
+const BASE_URL = "https://zharnamarket.kz";
 
 /**
  * Добавляет hreflang-alternates для ru и kk к одному URL.

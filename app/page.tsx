@@ -12,8 +12,8 @@ import type { Ad } from "@/lib/types/ad";
 import type { CreatorProfile } from "@/lib/types/creator";
 
 export const metadata = {
-  metadataBase: new URL("https://viraladds.kz"),
-  title: "ViralAds PARTNER — реклама через блогеров в Казахстане",
+  metadataBase: new URL("https://zharnamarket.kz"),
+  title: "Zharnamarket — реклама через блогеров в Казахстане",
   description:
     "Маркетплейс для рекламы через TikTok, Instagram и YouTube-блогеров. " +
     "Бизнес размещает задания, креаторы откликаются напрямую. Алматы, Астана, Шымкент.",
@@ -36,31 +36,31 @@ export const metadata = {
   alternates: {
     canonical: "/",
     languages: {
-      ru: "https://viraladds.kz",
-      kk: "https://viraladds.kz",
-      "x-default": "https://viraladds.kz",
+      ru: "https://zharnamarket.kz",
+      kk: "https://zharnamarket.kz",
+      "x-default": "https://zharnamarket.kz",
     },
   },
   openGraph: {
-    title: "ViralAds PARTNER — реклама через блогеров в Казахстане",
+    title: "Zharnamarket — реклама через блогеров в Казахстане",
     description:
       "Маркетплейс для рекламы через TikTok, Instagram и YouTube-блогеров. " +
       "Бизнес размещает задания, креаторы откликаются напрямую.",
     type: "website",
-    url: "https://viraladds.kz",
+    url: "https://zharnamarket.kz",
     locale: "ru_KZ",
     images: [
       {
         url: "/og-default.svg",
         width: 1200,
         height: 630,
-        alt: "ViralAds PARTNER",
+        alt: "Zharnamarket",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "ViralAds PARTNER",
+    title: "Zharnamarket",
     description:
       "Маркетплейс для рекламы через TikTok, Instagram и YouTube-блогеров в Казахстане.",
   },

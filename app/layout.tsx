@@ -5,7 +5,7 @@ import { Toaster } from "sonner";
 import { AuthProvider } from "@/contexts/AuthContext";
 
 export const metadata: Metadata = {
-  title: "ViralAds PARTNER",
+  title: "Zharnamarket",
   description: "Платформа для рекламных объявлений — бизнес и креаторы без посредников",
 };
 

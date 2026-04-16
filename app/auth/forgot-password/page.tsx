@@ -36,11 +36,10 @@ export default function ForgotPasswordPage() {
           <Link href="/">
             <div className="inline-flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-white font-bold text-xl shadow-lg">
-                V
+                Z
               </div>
               <div>
-                <div className="font-bold text-xl text-gray-900">ViralAds</div>
-                <div className="text-xs text-gray-500">PARTNER</div>
+                <div className="font-bold text-xl text-gray-900">Zharnamarket</div>
               </div>
             </div>
           </Link>

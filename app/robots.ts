@@ -19,6 +19,6 @@ export default function robots(): MetadataRoute.Robots {
         ],
       },
     ],
-    sitemap: "https://viraladds.kz/sitemap.xml",
+    sitemap: "https://zharnamarket.kz/sitemap.xml",
   };
 }

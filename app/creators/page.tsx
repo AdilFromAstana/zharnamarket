@@ -37,11 +37,11 @@ async function getValidReferenceData() {
 }
 
 export const metadata = {
-  title: "Каталог креаторов — ViralAds PARTNER",
+  title: "Каталог креаторов — Zharnamarket",
   description:
     "Найди TikTok, Instagram и YouTube блогеров в Казахстане. Прямой контакт без посредников.",
   openGraph: {
-    title: "Каталог креаторов — ViralAds PARTNER",
+    title: "Каталог креаторов — Zharnamarket",
     description:
       "Найди TikTok, Instagram и YouTube блогеров в Казахстане. Прямой контакт без посредников.",
     type: "website",

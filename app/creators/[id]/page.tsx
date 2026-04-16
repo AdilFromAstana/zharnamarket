@@ -59,10 +59,10 @@ export async function generateMetadata({ params }: CreatorPageProps) {
   const creator = await fetchCreator(id);
   if (!creator) return { title: "Профиль не найден" };
   return {
-    title: `${creator.fullName} — ViralAds PARTNER`,
+    title: `${creator.fullName} — Zharnamarket`,
     description: creator.bio || `${creator.fullName}, ${creator.city}`,
     openGraph: {
-      title: `${creator.fullName} — ViralAds PARTNER`,
+      title: `${creator.fullName} — Zharnamarket`,
       description: creator.bio || `${creator.fullName}, ${creator.city}`,
     },
   };

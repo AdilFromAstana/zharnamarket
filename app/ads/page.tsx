@@ -78,14 +78,14 @@ export async function generateMetadata({
   if (page > 1) canonicalParams.set("page", String(page));
   const qs = canonicalParams.toString();
   const canonical = qs
-    ? `https://viraladds.kz/ads?${qs}`
-    : "https://viraladds.kz/ads";
+    ? `https://zharnamarket.kz/ads?${qs}`
+    : "https://zharnamarket.kz/ads";
 
   return {
-    title: `Объявления${suffix} — ViralAds PARTNER`,
+    title: `Объявления${suffix} — Zharnamarket`,
     description: `Найди рекламные задания для TikTok, Instagram и YouTube в Казахстане. Объявления от бизнеса напрямую без посредников.${suffix}`,
     openGraph: {
-      title: `Объявления${suffix} — ViralAds PARTNER`,
+      title: `Объявления${suffix} — Zharnamarket`,
       description: `Найди рекламные задания для TikTok, Instagram и YouTube в Казахстане. Объявления от бизнеса напрямую без посредников.${suffix}`,
       type: "website",
     },

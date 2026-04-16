@@ -35,7 +35,7 @@ function getTransporter(): nodemailer.Transporter | null {
   return _transporter;
 }
 
-const FROM = () => process.env.SMTP_FROM ?? '"ViralAds" <noreply@viraladds.kz>';
+const FROM = () => process.env.SMTP_FROM ?? '"Zharnamarket" <noreply@zharnamarket.kz>';
 
 /**
  * Отправляет email для сброса пароля.
@@ -50,11 +50,11 @@ export async function sendPasswordResetEmail(
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 16px;">
       <div style="text-align: center; margin-bottom: 24px;">
-        <div style="display: inline-block; width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #0ea5e9, #2563eb); line-height: 48px; color: white; font-weight: bold; font-size: 20px;">V</div>
+        <div style="display: inline-block; width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #0ea5e9, #2563eb); line-height: 48px; color: white; font-weight: bold; font-size: 20px;">Z</div>
       </div>
       <h2 style="color: #111827; font-size: 20px; margin-bottom: 12px; text-align: center;">Сброс пароля</h2>
       <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin-bottom: 24px;">
-        Вы запросили сброс пароля для аккаунта ViralAds. Нажмите кнопку ниже, чтобы установить новый пароль.
+        Вы запросили сброс пароля для аккаунта Zharnamarket. Нажмите кнопку ниже, чтобы установить новый пароль.
       </p>
       <div style="text-align: center; margin-bottom: 24px;">
         <a href="${resetUrl}" style="display: inline-block; padding: 12px 32px; background: #0ea5e9; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;">
@@ -66,7 +66,7 @@ export async function sendPasswordResetEmail(
       </p>
       <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
       <p style="color: #9ca3af; font-size: 11px; text-align: center;">
-        ViralAds — маркетплейс для бизнеса и креаторов
+        Zharnamarket — маркетплейс для бизнеса и креаторов
       </p>
     </div>
   `;
@@ -83,7 +83,7 @@ export async function sendPasswordResetEmail(
   await transporter.sendMail({
     from: FROM(),
     to,
-    subject: "Сброс пароля — ViralAds",
+    subject: "Сброс пароля — Zharnamarket",
     html,
   });
 }
@@ -101,7 +101,7 @@ export async function sendVerificationCode(
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 16px;">
       <div style="text-align: center; margin-bottom: 24px;">
-        <div style="display: inline-block; width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #0ea5e9, #2563eb); line-height: 48px; color: white; font-weight: bold; font-size: 20px;">V</div>
+        <div style="display: inline-block; width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #0ea5e9, #2563eb); line-height: 48px; color: white; font-weight: bold; font-size: 20px;">Z</div>
       </div>
       <h2 style="color: #111827; font-size: 20px; margin-bottom: 12px; text-align: center;">Подтверждение email</h2>
       <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin-bottom: 24px; text-align: center;">
@@ -113,11 +113,11 @@ export async function sendVerificationCode(
         </div>
       </div>
       <p style="color: #9ca3af; font-size: 12px; line-height: 1.5; text-align: center;">
-        Код действителен <strong>15 минут</strong>. Если вы не регистрировались на ViralAds — проигнорируйте это письмо.
+        Код действителен <strong>15 минут</strong>. Если вы не регистрировались на Zharnamarket — проигнорируйте это письмо.
       </p>
       <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
       <p style="color: #9ca3af; font-size: 11px; text-align: center;">
-        ViralAds — маркетплейс для бизнеса и креаторов
+        Zharnamarket — маркетплейс для бизнеса и креаторов
       </p>
     </div>
   `;
@@ -133,7 +133,7 @@ export async function sendVerificationCode(
   await transporter.sendMail({
     from: FROM(),
     to,
-    subject: `${code} — Код подтверждения ViralAds`,
+    subject: `${code} — Код подтверждения Zharnamarket`,
     html,
   });
 }
@@ -142,12 +142,12 @@ function wrapHtml(inner: string): string {
   return `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 16px;">
       <div style="text-align: center; margin-bottom: 24px;">
-        <div style="display: inline-block; width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #0ea5e9, #2563eb); line-height: 48px; color: white; font-weight: bold; font-size: 20px;">V</div>
+        <div style="display: inline-block; width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #0ea5e9, #2563eb); line-height: 48px; color: white; font-weight: bold; font-size: 20px;">Z</div>
       </div>
       ${inner}
       <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
       <p style="color: #9ca3af; font-size: 11px; text-align: center;">
-        ViralAds — маркетплейс для бизнеса и креаторов
+        Zharnamarket — маркетплейс для бизнеса и креаторов
       </p>
     </div>
   `;
@@ -229,7 +229,7 @@ export async function sendNewDeviceLoginEmail(
       </a>
     </div>
   `;
-  await deliver(to, "Вход с нового устройства — ViralAds", wrapHtml(inner), "New device login");
+  await deliver(to, "Вход с нового устройства — Zharnamarket", wrapHtml(inner), "New device login");
 }
 
 /**
@@ -240,7 +240,7 @@ export async function sendPasswordChangedEmail(to: string): Promise<void> {
   const inner = `
     <h2 style="color: #111827; font-size: 20px; margin-bottom: 12px; text-align: center;">Пароль изменён</h2>
     <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin-bottom: 16px;">
-      Пароль от вашего аккаунта ViralAds был успешно изменён. Все другие сессии были завершены.
+      Пароль от вашего аккаунта Zharnamarket был успешно изменён. Все другие сессии были завершены.
     </p>
     <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin-bottom: 24px;">
       Если это были не вы — восстановите доступ через «Забыли пароль?» и обратитесь в поддержку.
@@ -251,7 +251,7 @@ export async function sendPasswordChangedEmail(to: string): Promise<void> {
       </a>
     </div>
   `;
-  await deliver(to, "Пароль изменён — ViralAds", wrapHtml(inner), "Password changed");
+  await deliver(to, "Пароль изменён — Zharnamarket", wrapHtml(inner), "Password changed");
 }
 
 function escapeHtml(s: string): string {

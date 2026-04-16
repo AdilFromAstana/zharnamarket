@@ -2,8 +2,8 @@ import Link from "next/link";
 import PublicLayout from "@/components/layout/PublicLayout";
 
 export const metadata = {
-  title: "Условия использования — ViralAds PARTNER",
-  description: "Правила и условия использования платформы ViralAds PARTNER",
+  title: "Условия использования — Zharnamarket",
+  description: "Правила и условия использования платформы Zharnamarket",
 };
 
 export default function TermsPage() {
@@ -32,7 +32,7 @@ export default function TermsPage() {
               1. Общие положения
             </h2>
             <p>
-              ViralAds PARTNER — маркетплейс для прямого взаимодействия бизнеса
+              Zharnamarket — маркетплейс для прямого взаимодействия бизнеса
               и создателей контента (блогеров, инфлюенсеров) в Казахстане.
               Регистрируясь на платформе, вы соглашаетесь с настоящими
               условиями.
@@ -119,7 +119,7 @@ export default function TermsPage() {
             <p>
               По вопросам, связанным с условиями использования, обращайтесь:
               <br />
-              Email: support@viraladds.kz
+              Email: support@zharnamarket.kz
             </p>
           </section>
         </div>

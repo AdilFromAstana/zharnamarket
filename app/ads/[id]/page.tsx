@@ -147,7 +147,7 @@ export async function generateMetadata({ params }: AdPageProps) {
   const ad = await getAd(id);
   if (!ad) return { title: "Объявление не найдено" };
   return {
-    title: `${ad.title} — ViralAds PARTNER`,
+    title: `${ad.title} — Zharnamarket`,
     description: ad.description,
   };
 }
