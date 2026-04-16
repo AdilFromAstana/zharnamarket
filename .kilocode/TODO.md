@@ -1,4 +1,4 @@
-# TODO: MVP ViralAds PARTNER
+# TODO: MVP Zharnamarket PARTNER
 
 ## Фокус MVP
 

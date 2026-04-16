@@ -91,7 +91,7 @@ export interface AdvertiserProfilePublic extends AdvertiserProfile {
 SSR page по паттерну [`app/creators/[id]/page.tsx`](../../app/creators/[id]/page.tsx):
 
 ```tsx
-// generateMetadata — SEO: "Zara KZ — Заказчик на ViralAds"
+// generateMetadata — SEO: "Zara KZ — Заказчик на Zharnamarket"
 // Если заказчик не найден → notFound()
 // Оборачивает в PublicLayout + CustomerDetailClient
 ```
@@ -338,7 +338,7 @@ export function getCustomerFromAds(ownerId: string): CustomerPublicProfile | nul
 
 ```ts
 generateMetadata:
-  title: `${displayName} — Заказчик на ViralAds`
+  title: `${displayName} — Заказчик на Zharnamarket`
   description: `${description || `${displayName}, ${city} — заказчик. Объявлений: ${totalAds}`}`
 ```
 
