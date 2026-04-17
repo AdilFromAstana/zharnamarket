@@ -1,10 +1,14 @@
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 import PublicLayout from "@/components/layout/PublicLayout";
 import AdDetailClient from "./AdDetailClient";
 import OtherAdvertiserAds from "./OtherAdvertiserAds";
+import JsonLd, { adOfferSchema, breadcrumbSchema } from "@/components/seo/JsonLd";
 
 export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
+import { verifyToken } from "@/lib/auth";
+import { COOKIE_NAMES } from "@/lib/cookies";
 import { mapPrismaAdToAd } from "@/lib/mappers/ad";
 import type { Ad } from "@/lib/types/ad";
 import type { ApprovedSubmission } from "@/lib/types/submission";
@@ -50,16 +54,18 @@ async function getAd(id: string): Promise<Ad | null> {
       include: AD_INCLUDE,
     });
     if (!raw) return null;
-
-    // Инкрементируем просмотры (fire-and-forget)
-    prisma.ad
-      .update({ where: { id }, data: { viewCount: { increment: 1 } } })
-      .catch(() => {});
-
     return mapPrismaAdToAd(raw);
   } catch {
     return null;
   }
+}
+
+/** Инкрементирует viewCount, пропуская автора объявления */
+function trackView(adId: string, ownerId: string, visitorId?: string) {
+  if (visitorId && visitorId === ownerId) return;
+  prisma.ad
+    .update({ where: { id: adId }, data: { viewCount: { increment: 1 } } })
+    .catch(() => {});
 }
 
 async function getOtherAdvertiserAds(
@@ -146,9 +152,32 @@ export async function generateMetadata({ params }: AdPageProps) {
   const { id } = await params;
   const ad = await getAd(id);
   if (!ad) return { title: "Объявление не найдено" };
+  const keywords = [
+    ad.title,
+    ad.platform,
+    ad.city || "Казахстан",
+    ad.category || "реклама",
+    "видеореклама",
+    "блогеры",
+    "жарнама",
+  ].filter(Boolean);
+
+  const desc = ad.description?.length > 155 ? ad.description.slice(0, 155) + "…" : ad.description;
+
   return {
     title: `${ad.title} — Zharnamarket`,
-    description: ad.description,
+    description: desc,
+    keywords,
+    openGraph: {
+      title: `${ad.title} — Zharnamarket`,
+      description: desc,
+      type: "article",
+      url: `https://zharnamarket.kz/ads/${id}`,
+      ...(ad.publishedAt && { publishedTime: ad.publishedAt }),
+    },
+    alternates: {
+      canonical: `/ads/${id}`,
+    },
   };
 }
 
@@ -157,6 +186,12 @@ export default async function AdPage({ params }: AdPageProps) {
 
   const ad = await getAd(id);
   if (!ad) notFound();
+
+  // Трекаем просмотр один раз, пропуская автора
+  const cookieStore = await cookies();
+  const accessToken = cookieStore.get(COOKIE_NAMES.ACCESS_TOKEN)?.value;
+  const jwt = accessToken ? await verifyToken(accessToken) : null;
+  trackView(ad.id, ad.ownerId, jwt?.sub ?? undefined);
 
   const [related, otherByAdvertiser, approvedSubmissions] = await Promise.all([
     getRelatedAds(id, ad.platform, ad.category),
@@ -173,6 +208,27 @@ export default async function AdPage({ params }: AdPageProps) {
 
   return (
     <PublicLayout>
+      <JsonLd
+        data={[
+          breadcrumbSchema([
+            { name: "Главная", url: "https://zharnamarket.kz" },
+            { name: "Объявления", url: "https://zharnamarket.kz/ads" },
+            { name: ad.title, url: `https://zharnamarket.kz/ads/${ad.id}` },
+          ]),
+          adOfferSchema({
+            id: ad.id,
+            title: ad.title,
+            description: ad.description,
+            platform: ad.platform,
+            budgetFrom: ad.budgetFrom,
+            budgetTo: ad.budgetTo,
+            city: ad.city,
+            category: ad.category,
+            ownerName: ad.companyName,
+            publishedAt: ad.publishedAt,
+          }),
+        ]}
+      />
       <AdDetailClient
         ad={ad}
         relatedAds={related}
