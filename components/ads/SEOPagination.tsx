@@ -8,14 +8,16 @@ interface SEOPaginationProps {
   totalPages: number;
   /** Base path for link-based navigation (default: "/ads") */
   baseUrl?: string;
-  /** If provided, clicks call this instead of navigating (client-fetch mode) */
+  /** Current URL search params — preserved in pagination hrefs (e.g. filters) */
+  searchParams?: Record<string, string>;
+  /** If provided, called on click in addition to <Link> navigation (client-fetch mode) */
   onPageChange?: (page: number) => void;
 }
 
 /**
  * SEO-friendly pagination component.
- * - Without `onPageChange`: renders Next.js `<Link>` tags (crawlable `<a>` for SEO).
- * - With `onPageChange`: renders `<button>` for client-side fetch (filters active).
+ * Always renders `<Link>` so crawlers can discover paginated pages.
+ * When `onPageChange` is provided, it fires on click for fast client-side UX.
  *
  * Desktop: full numbered pagination with ellipsis.
  * Mobile: compact prev/next buttons with "Page X of Y" indicator.
@@ -24,6 +26,7 @@ export default function SEOPagination({
   currentPage,
   totalPages,
   baseUrl = "/ads",
+  searchParams,
   onPageChange,
 }: SEOPaginationProps) {
   if (totalPages <= 1) return null;
@@ -31,9 +34,14 @@ export default function SEOPagination({
   const isFirstPage = currentPage <= 1;
   const isLastPage = currentPage >= totalPages;
 
-  /** Build the href for a given page number */
-  const hrefFor = (page: number) =>
-    page === 1 ? baseUrl : `${baseUrl}?page=${page}`;
+  /** Build the href for a given page number, preserving current search params */
+  const hrefFor = (page: number) => {
+    const params = new URLSearchParams(searchParams);
+    if (page > 1) params.set("page", String(page));
+    else params.delete("page");
+    const qs = params.toString();
+    return qs ? `${baseUrl}?${qs}` : baseUrl;
+  };
 
   /** Generate visible page numbers with ellipsis gaps */
   const getPageNumbers = (): (number | "ellipsis")[] => {
@@ -86,24 +94,6 @@ export default function SEOPagination({
       );
     }
 
-    if (onPageChange) {
-      return (
-        <button
-          key={key}
-          type="button"
-          className={className}
-          aria-label={ariaLabel}
-          aria-current={page === currentPage ? "page" : undefined}
-          onClick={() => {
-            onPageChange(page);
-            scrollToTop();
-          }}
-        >
-          {children}
-        </button>
-      );
-    }
-
     return (
       <Link
         key={key}
@@ -112,7 +102,13 @@ export default function SEOPagination({
         prefetch={false}
         aria-label={ariaLabel}
         aria-current={page === currentPage ? "page" : undefined}
-        onClick={scrollToTop}
+        onClick={(e) => {
+          if (onPageChange) {
+            e.preventDefault();
+            onPageChange(page);
+          }
+          scrollToTop();
+        }}
       >
         {children}
       </Link>

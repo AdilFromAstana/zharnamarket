@@ -1,5 +1,6 @@
 import PublicLayout from "@/components/layout/PublicLayout";
 import AdsListClient from "./AdsListClient";
+import JsonLd, { breadcrumbSchema, itemListSchema } from "@/components/seo/JsonLd";
 
 export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
@@ -13,16 +14,9 @@ import { COOKIE_NAMES } from "@/lib/cookies";
 import { cookies } from "next/headers";
 import type { Ad, AdFacets, AdFilters } from "@/lib/types/ad";
 import type { Metadata } from "next";
+import { VALID_PLATFORMS, VALID_BUDGET_TYPES } from "@/lib/validation";
 
 const PAGE_SIZE = 20;
-
-const VALID_PLATFORMS = new Set(["TikTok", "Instagram", "YouTube"]);
-const VALID_BUDGET_TYPES = new Set([
-  "fixed",
-  "per_views",
-  "revenue",
-  "negotiable",
-]);
 
 interface SearchParams {
   page?: string;
@@ -586,6 +580,22 @@ export default async function AdsPage({ searchParams }: Props) {
 
   return (
     <PublicLayout>
+      <JsonLd
+        data={[
+          breadcrumbSchema([
+            { name: "Главная", url: "https://zharnamarket.kz" },
+            { name: "Объявления", url: "https://zharnamarket.kz/ads" },
+          ]),
+          itemListSchema(
+            "Рекламные объявления — Zharnamarket",
+            ads.slice(0, 10).map((ad, i) => ({
+              url: `https://zharnamarket.kz/ads/${ad.id}`,
+              name: ad.title,
+              position: i + 1,
+            })),
+          ),
+        ]}
+      />
       <div className="md:mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Объявления</h1>
         <p className="text-gray-500">

@@ -20,6 +20,9 @@ let categoriesCache: RefItem[] | null = null;
 let platformsCache: RefItem[] | null = null;
 let budgetTypesCache: RefItem[] | null = null;
 let businessCategoriesCache: RefItem[] | null = null;
+let videoFormatsCache: RefItem[] | null = null;
+let adFormatsCache: RefItem[] | null = null;
+let adSubjectsCache: RefItem[] | null = null;
 
 /** Получить список городов из API */
 export async function getCities(): Promise<RefItem[]> {
@@ -174,6 +177,72 @@ export async function getBusinessCategories(): Promise<RefItem[]> {
       { key: "Nedvizhimost", label: "Недвижимость" },
       { key: "Drugoe", label: "Другое" },
     ];
+  }
+}
+
+/** Получить список форматов видео из API */
+export async function getVideoFormats(): Promise<RefItem[]> {
+  if (videoFormatsCache) return videoFormatsCache;
+
+  try {
+    const response = await fetch("/api/video-formats");
+    if (!response.ok) throw new Error("Failed to fetch video formats");
+    const res = await response.json();
+    const result: RefItem[] = (res.data ?? []).map(
+      (item: { key: string; label: string }) => ({
+        key: item.key,
+        label: item.label,
+      }),
+    );
+    videoFormatsCache = result;
+    return result;
+  } catch (error) {
+    console.error("Error fetching video formats:", error);
+    return [];
+  }
+}
+
+/** Получить список форматов рекламы из API */
+export async function getAdFormats(): Promise<RefItem[]> {
+  if (adFormatsCache) return adFormatsCache;
+
+  try {
+    const response = await fetch("/api/ad-formats");
+    if (!response.ok) throw new Error("Failed to fetch ad formats");
+    const res = await response.json();
+    const result: RefItem[] = (res.data ?? []).map(
+      (item: { key: string; label: string }) => ({
+        key: item.key,
+        label: item.label,
+      }),
+    );
+    adFormatsCache = result;
+    return result;
+  } catch (error) {
+    console.error("Error fetching ad formats:", error);
+    return [];
+  }
+}
+
+/** Получить список тематик рекламы из API */
+export async function getAdSubjects(): Promise<RefItem[]> {
+  if (adSubjectsCache) return adSubjectsCache;
+
+  try {
+    const response = await fetch("/api/ad-subjects");
+    if (!response.ok) throw new Error("Failed to fetch ad subjects");
+    const res = await response.json();
+    const result: RefItem[] = (res.data ?? []).map(
+      (item: { key: string; label: string }) => ({
+        key: item.key,
+        label: item.label,
+      }),
+    );
+    adSubjectsCache = result;
+    return result;
+  } catch (error) {
+    console.error("Error fetching ad subjects:", error);
+    return [];
   }
 }
 

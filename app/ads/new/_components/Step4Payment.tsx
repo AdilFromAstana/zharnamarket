@@ -1,13 +1,10 @@
 import { useState } from "react";
-import { Radio } from "antd";
 import {
-  CreditCardOutlined,
-  SafetyOutlined,
-  WalletOutlined,
   CheckCircleOutlined,
-  CloseCircleOutlined,
+  CreditCardOutlined,
   TagOutlined,
-  DownOutlined,
+  WalletOutlined,
+  SafetyOutlined,
 } from "@ant-design/icons";
 import type { FormInstance } from "antd";
 import type { PaymentMethod } from "@/lib/types/payment";
@@ -15,7 +12,7 @@ import { PUBLICATION_PRICE, PLATFORM_COMMISSION_RATE } from "@/lib/constants";
 import { formatPrice } from "@/lib/utils";
 import type { PromoResult } from "../_types";
 import { PROVIDER_PAYMENT_METHODS } from "../_constants";
-import TopupDrawer from "@/components/balance/TopupDrawer";
+import Link from "next/link";
 
 type Step4PaymentProps = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -48,41 +45,37 @@ export default function Step4Payment({
   finalPayPrice,
 }: Step4PaymentProps) {
   const [promoExpanded, setPromoExpanded] = useState(false);
-  const [showOtherMethods, setShowOtherMethods] = useState(false);
-  const [topupOpen, setTopupOpen] = useState(false);
-
   const requiredAmount = isEscrowMode
     ? (form.getFieldValue("totalBudget") ?? 0)
     : finalPayPrice;
   const balance = walletBalance ?? 0;
   const walletSufficient = balance >= requiredAmount;
 
-  // Auto-expand other methods if wallet is insufficient
-  const otherMethodsVisible = showOtherMethods || !walletSufficient;
+  const totalPrice = isEscrowMode
+    ? (form.getFieldValue("totalBudget") ?? 0)
+    : finalPayPrice;
 
   return (
-    <div className="space-y-3">
-      {/* ── Что оплачивается + Итого ── */}
-      <div className="md:bg-white md:rounded-2xl md:border md:border-gray-200 md:p-5">
-        <h3 className="font-semibold text-gray-900 mb-3 text-sm">
-          {isEscrowMode ? "Заморозка бюджета" : "Публикация объявления"}
-        </h3>
+    <div className="space-y-6">
+      {/* ── Сводка (summary) ── */}
+      <div>
+        <h3 className="font-semibold text-gray-900 mb-3">Сводка</h3>
 
-        {isEscrowMode ? (
-          <div className="mb-3 space-y-2">
-            <div className="rounded-lg border border-green-200 overflow-hidden">
-              <div className="flex justify-between items-center px-3 py-2.5 bg-white">
+        <div className="divide-y divide-gray-100">
+          {isEscrowMode ? (
+            <>
+              <div className="flex justify-between py-2.5">
                 <span className="text-sm text-gray-600">Бюджет задания</span>
-                <span className="font-semibold text-gray-900">
+                <span className="text-sm font-medium text-gray-900">
                   {formatPrice(form.getFieldValue("totalBudget") ?? 0)}
                 </span>
               </div>
-              <div className="flex justify-between items-center px-3 py-2 bg-white border-t border-gray-100">
-                <span className="text-xs text-gray-400 italic">
+              <div className="flex justify-between py-2.5">
+                <span className="text-sm text-gray-400">
                   Комиссия платформы ({PLATFORM_COMMISSION_RATE * 100}% с
                   выплат)
                 </span>
-                <span className="text-xs text-gray-400 italic">
+                <span className="text-sm text-gray-400">
                   ~
                   {formatPrice(
                     Math.round(
@@ -92,251 +85,201 @@ export default function Step4Payment({
                   )}
                 </span>
               </div>
-              <div className="flex justify-between items-center px-3 py-2.5 bg-green-50 border-t border-green-200">
-                <span className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
-                  <SafetyOutlined style={{ color: "#16a34a" }} /> Замораживается
-                </span>
-                <span className="text-lg font-bold text-gray-900">
-                  {formatPrice(form.getFieldValue("totalBudget") ?? 0)}
-                </span>
-              </div>
-            </div>
-            <p className="text-xs text-gray-400 px-0.5">
-              Комиссия вычитается из выплат креаторам. RPM:{" "}
-              {form.getFieldValue("rpm")} ₸ / 1 000 просм. · Остаток можно
-              вернуть.
-            </p>
-          </div>
-        ) : (
-          /* ── Regular publication ── */
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200 mb-3">
-            <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center shrink-0">
-              <CreditCardOutlined style={{ color: "#fff", fontSize: 14 }} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-gray-900 text-sm">
-                Базовая публикация
-              </p>
-              <p className="text-xs text-gray-500">
-                Видно всем креаторам · 7 дней
-              </p>
-            </div>
-            <div className="text-xl font-bold text-gray-900 shrink-0">
-              {formatPrice(PUBLICATION_PRICE)}
-            </div>
-          </div>
-        )}
-
-        {/* ── Промокод (collapsible) — только для обычной публикации ── */}
-        {!isEscrowMode && (
-          <div className="mb-3">
-            {promoResult?.valid ? (
-              /* Промокод применён — показать результат */
-              <div className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg bg-green-50 border border-green-200 text-green-700">
-                <CheckCircleOutlined
-                  style={{ color: "#16a34a" }}
-                  className="shrink-0"
-                />
-                <span className="font-medium">{promoCodeInput}</span>
-                <span>−{formatPrice(promoResult.discountAmount ?? 0)}</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPromoResult(null);
-                    setPromoCodeInput("");
-                    setPromoExpanded(false);
-                  }}
-                  className="ml-auto text-xs text-green-600 hover:text-green-800 underline"
-                >
-                  Убрать
-                </button>
-              </div>
-            ) : promoExpanded ? (
-              /* Промокод раскрыт — input + кнопка */
-              <div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={promoCodeInput}
-                    onChange={(e) => {
-                      setPromoCodeInput(e.target.value.toUpperCase());
-                      setPromoResult(null);
-                    }}
-                    onKeyDown={(e) => e.key === "Enter" && handleApplyPromo()}
-                    placeholder="PROMO2024"
-                    className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-400"
-                    autoFocus
-                  />
-                  <button
-                    type="button"
-                    onClick={handleApplyPromo}
-                    disabled={promoLoading || !promoCodeInput.trim()}
-                    className="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {promoLoading ? "..." : "OK"}
-                  </button>
+            </>
+          ) : (
+            <>
+              <div className="flex justify-between py-2.5">
+                <div>
+                  <span className="text-sm text-gray-900">
+                    Базовая публикация
+                  </span>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Видно всем креаторам · 7 дней
+                  </p>
                 </div>
-                {promoResult !== null && !promoResult.valid && (
-                  <div className="mt-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-red-50 text-red-600 border border-red-200 flex items-center gap-1">
-                    <CloseCircleOutlined
-                      style={{ color: "#ef4444" }}
-                      className="shrink-0"
-                    />
-                    {promoResult.message}
-                  </div>
-                )}
-              </div>
-            ) : (
-              /* Промокод свёрнут — ссылка */
-              <button
-                type="button"
-                onClick={() => setPromoExpanded(true)}
-                className="text-sm text-blue-500 hover:text-blue-700 flex items-center gap-1"
-              >
-                <TagOutlined style={{ color: "#3b82f6", fontSize: 12 }} />
-                Есть промокод?
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* ── Итого ── */}
-        <div className="border-t border-gray-100 pt-3">
-          <div className="flex justify-between items-center">
-            <span className="font-semibold text-gray-900 text-sm">
-              {isEscrowMode ? "Замораживается" : "К оплате"}
-            </span>
-            <div className="text-right">
-              {!isEscrowMode && promoResult?.valid && (
-                <span className="text-xs text-gray-400 line-through mr-2">
+                <span className="text-sm font-medium text-gray-900">
                   {formatPrice(PUBLICATION_PRICE)}
                 </span>
-              )}
-              {isEscrowMode ? (
-                <span className="text-lg font-bold text-gray-900">
-                  {formatPrice(form.getFieldValue("totalBudget") ?? 0)}
-                </span>
+              </div>
+
+              {/* Промокод */}
+              {promoResult?.valid ? (
+                <div className="flex justify-between items-center py-2.5">
+                  <div className="flex items-center gap-1.5 text-sm text-green-700">
+                    <CheckCircleOutlined style={{ color: "#16a34a" }} />
+                    <span>Промокод {promoCodeInput}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-green-700">
+                      −{formatPrice(promoResult.discountAmount ?? 0)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPromoResult(null);
+                        setPromoCodeInput("");
+                        setPromoExpanded(false);
+                      }}
+                      className="text-xs text-gray-400 hover:text-gray-600 underline"
+                    >
+                      Убрать
+                    </button>
+                  </div>
+                </div>
+              ) : promoExpanded ? (
+                <div className="py-2.5">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={promoCodeInput}
+                      onChange={(e) => {
+                        setPromoCodeInput(e.target.value.toUpperCase());
+                        setPromoResult(null);
+                      }}
+                      onKeyDown={(e) => e.key === "Enter" && handleApplyPromo()}
+                      placeholder="PROMO2024"
+                      className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApplyPromo}
+                      disabled={promoLoading || !promoCodeInput.trim()}
+                      className="px-3 py-1.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {promoLoading ? "..." : "Применить"}
+                    </button>
+                  </div>
+                </div>
               ) : (
-                <span className="text-lg font-bold text-gray-900">
-                  {formatPrice(finalPayPrice)}
-                </span>
+                <div className="py-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setPromoExpanded(true)}
+                    className="text-sm text-blue-500 hover:text-blue-700 flex items-center gap-1"
+                  >
+                    <TagOutlined style={{ fontSize: 12 }} />
+                    Есть промокод?
+                  </button>
+                </div>
               )}
-            </div>
-          </div>
-          {isEscrowMode && (
-            <div className="text-xs text-gray-400 text-right mt-0.5">
-              +~
-              {formatPrice(
-                Math.round(
-                  (form.getFieldValue("totalBudget") ?? 0) *
-                    PLATFORM_COMMISSION_RATE,
-                ),
-              )}{" "}
-              комиссия с выплат
-            </div>
+            </>
           )}
         </div>
       </div>
 
-      {/* ── Способ оплаты (smart default + progressive disclosure) ── */}
-      <div className="md:bg-white md:rounded-2xl md:border md:border-gray-200 md:p-5">
-        <Radio.Group
-          value={paymentMethod}
-          onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-          className="w-full"
-        >
-          <div className="space-y-1.5">
-            {/* Кошелёк — всегда видим */}
-            <label
-              className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
-                paymentMethod === "wallet"
-                  ? "border-emerald-400 bg-emerald-50"
-                  : "border-gray-100 hover:border-gray-300"
+      {/* ── Способ оплаты ── */}
+      <div>
+        <h3 className="font-semibold text-gray-900 mb-3">
+          Как вы хотите оплатить?
+        </h3>
+
+        <div className="grid grid-cols-2 gap-3">
+          {/* Кошелёк */}
+          <button
+            type="button"
+            onClick={() => walletSufficient && setPaymentMethod("wallet")}
+            className={`relative flex flex-col items-center text-center p-4 rounded-xl border-2 transition-colors ${
+              paymentMethod === "wallet"
+                ? "border-blue-500 bg-blue-50/50"
+                : walletSufficient
+                  ? "border-gray-200 hover:border-gray-300 bg-white"
+                  : "border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed"
+            }`}
+          >
+            <WalletOutlined
+              style={{
+                fontSize: 24,
+                color: paymentMethod === "wallet" ? "#3b82f6" : "#9ca3af",
+              }}
+            />
+            <span className="text-sm font-medium text-gray-900 mt-2">
+              Кошелёк
+            </span>
+            {walletBalance !== null && (
+              <span
+                className={`text-xs mt-0.5 ${walletSufficient ? "text-gray-400" : "text-red-500"}`}
+              >
+                {walletSufficient
+                  ? `Доступно ${balance.toLocaleString("ru")} ₸`
+                  : `${balance.toLocaleString("ru")} ₸ — мало`}
+              </span>
+            )}
+            {!walletSufficient && walletBalance !== null && (
+              <Link
+                href={`/cabinet/balance/topup?amount=${Math.max(requiredAmount - balance, 100)}`}
+                className="text-xs text-blue-500 hover:text-blue-700 underline mt-1"
+                onClick={(e) => e.stopPropagation()}
+              >
+                Пополнить
+              </Link>
+            )}
+          </button>
+
+          {/* Другие способы */}
+          {PROVIDER_PAYMENT_METHODS.map((method) => (
+            <button
+              key={method.id}
+              type="button"
+              onClick={() => setPaymentMethod(method.id)}
+              className={`flex flex-col items-center text-center p-4 rounded-xl border-2 transition-colors ${
+                paymentMethod === method.id
+                  ? "border-blue-500 bg-blue-50/50"
+                  : "border-gray-200 hover:border-gray-300 bg-white"
               }`}
             >
-              <Radio value="wallet" />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-gray-900 text-sm flex items-center gap-1.5">
-                  <WalletOutlined style={{ color: "#059669" }} />
-                  Из кошелька
-                </div>
-                {walletBalance === null ? (
-                  <div className="text-xs text-gray-400">Загрузка...</div>
-                ) : walletSufficient ? (
-                  <div className="text-xs text-emerald-600 font-medium">
-                    Доступно: {balance.toLocaleString("ru")} ₸
-                  </div>
-                ) : (
-                  <div className="text-xs text-red-500">
-                    Недостаточно: {balance.toLocaleString("ru")} ₸ из{" "}
-                    {requiredAmount.toLocaleString("ru")} ₸{" · "}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setTopupOpen(true);
-                      }}
-                      className="underline text-red-500 hover:text-red-700"
-                    >
-                      Пополнить
-                    </button>
-                  </div>
-                )}
-              </div>
-            </label>
-
-            {/* Другие способы — progressive disclosure */}
-            {!otherMethodsVisible ? (
-              <button
-                type="button"
-                onClick={() => setShowOtherMethods(true)}
-                className="w-full text-left text-sm text-gray-500 hover:text-gray-700 py-1.5 px-1 flex items-center gap-1 transition-colors"
-              >
-                Другой способ оплаты
-                <DownOutlined style={{ color: "#9ca3af", fontSize: 10 }} />
-              </button>
-            ) : (
-              PROVIDER_PAYMENT_METHODS.map((method) => (
-                <label
-                  key={method.id}
-                  className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
-                    paymentMethod === method.id
-                      ? "border-blue-400 bg-blue-50"
-                      : "border-gray-100 hover:border-gray-300"
-                  }`}
-                >
-                  <Radio value={method.id} />
-                  <div>
-                    <div className="font-medium text-gray-900 text-sm">
-                      {method.label}
-                    </div>
-                    <div className="text-xs text-gray-400">{method.desc}</div>
-                  </div>
-                </label>
-              ))
-            )}
-          </div>
-        </Radio.Group>
+              <CreditCardOutlined
+                style={{
+                  fontSize: 24,
+                  color: paymentMethod === method.id ? "#3b82f6" : "#9ca3af",
+                }}
+              />
+              <span className="text-sm font-medium text-gray-900 mt-2">
+                {method.label}
+              </span>
+              <span className="text-xs text-gray-400 mt-0.5">
+                {method.desc}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* ── Подсказка (вместо тяжёлого Alert) ── */}
-      <p className="text-xs text-gray-400 flex items-start gap-1.5 px-1">
-        <SafetyOutlined
-          style={{ color: "#9ca3af", fontSize: 12 }}
-          className="mt-0.5 shrink-0"
-        />
-        <span>
-          {isEscrowMode
-            ? "Бюджет замораживается на эскроу-счёте. Выплаты креаторам — после проверки просмотров. Остаток можно вернуть."
-            : "После оплаты объявление сразу появится в ленте на 7 дней."}
-        </span>
-      </p>
+      {/* ── Итого ── */}
+      <div className="pt-2 border-t border-gray-200">
+        <div className="flex justify-between items-baseline">
+          <span className="text-lg font-semibold text-gray-900">
+            Всего к оплате:
+          </span>
+          <div className="text-right">
+            {!isEscrowMode && promoResult?.valid && (
+              <span className="text-sm text-gray-400 line-through mr-2">
+                {formatPrice(PUBLICATION_PRICE)}
+              </span>
+            )}
+            <span className="text-2xl font-bold text-gray-900">
+              {formatPrice(totalPrice)}
+            </span>
+          </div>
+        </div>
+        {isEscrowMode && (
+          <p className="text-xs text-gray-400 text-right mt-1">
+            +~
+            {formatPrice(
+              Math.round(totalPrice * PLATFORM_COMMISSION_RATE),
+            )}{" "}
+            комиссия с выплат
+          </p>
+        )}
+      </div>
 
-      <TopupDrawer
-        open={topupOpen}
-        onClose={() => setTopupOpen(false)}
-        initialAmount={Math.max(requiredAmount - balance, 100)}
-      />
+      {/* ── Мини trust-сигнал ── */}
+      <p className="text-xs text-gray-400 flex items-center gap-1.5 justify-center">
+        <SafetyOutlined style={{ fontSize: 11, color: "#9ca3af" }} />
+        {isEscrowMode
+          ? "Бюджет на эскроу-счёте. Остаток можно вернуть."
+          : "Безопасная оплата · Публикация сразу после подтверждения"}
+      </p>
     </div>
   );
 }

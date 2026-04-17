@@ -26,17 +26,12 @@ import {
 import { useParams, useRouter } from "next/navigation";
 import PublicLayout from "@/components/layout/PublicLayout";
 import StickyBottomBar from "@/components/ui/StickyBottomBar";
-import {
-  getCities,
-  getCategories,
-  getPlatforms,
-  type RefItem,
-} from "@/lib/constants";
 import type { BudgetType } from "@/lib/types/ad";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import RichTextEditor from "@/components/ui/RichTextEditor";
+import { useCities, useCategories, usePlatforms, useVideoFormats, useAdFormats, useAdSubjects } from "@/hooks/useRefData";
 
 const PLATFORM_ICONS: Record<string, React.ReactNode> = {
   TikTok: <PlaySquareOutlined />,
@@ -85,60 +80,19 @@ export default function AdEditPage() {
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
-  const [cities, setCities] = useState<RefItem[]>([]);
-  const [categories, setCategories] = useState<RefItem[]>([]);
-  const [platforms, setPlatforms] = useState<RefItem[]>([]);
+  const { data: cities = [] } = useCities();
+  const { data: categories = [] } = useCategories();
+  const { data: platforms = [] } = usePlatforms();
+  const { data: videoFormats = [] } = useVideoFormats();
+  const { data: adFormats = [] } = useAdFormats();
+  const { data: adSubjects = [] } = useAdSubjects();
 
-  useEffect(() => {
-    const loadReferenceData = async () => {
-      try {
-        const [citiesData, categoriesData, platformsData] = await Promise.all([
-          getCities(),
-          getCategories(),
-          getPlatforms(),
-        ]);
-        setCities(citiesData);
-        setCategories(categoriesData);
-        setPlatforms(platformsData);
-      } catch (error) {
-        console.error("Error loading reference data:", error);
-      }
-    };
-
-    loadReferenceData();
-  }, []);
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [platform, setPlatform] = useState<string>("");
   const [budgetType, setBudgetType] = useState<BudgetType | null>(null);
   const [notFound, setNotFound] = useState(false);
-
-  // Category dimension options
-  const [videoFormats, setVideoFormats] = useState<
-    Array<{ id: string; key: string; label: string; icon?: string | null }>
-  >([]);
-  const [adFormats, setAdFormats] = useState<
-    Array<{ id: string; key: string; label: string; icon?: string | null }>
-  >([]);
-  const [adSubjects, setAdSubjects] = useState<
-    Array<{ id: string; key: string; label: string; icon?: string | null }>
-  >([]);
-
-  // Load category options
-  useEffect(() => {
-    Promise.all([
-      api.get<{ data: typeof videoFormats }>("/api/video-formats"),
-      api.get<{ data: typeof adFormats }>("/api/ad-formats"),
-      api.get<{ data: typeof adSubjects }>("/api/ad-subjects"),
-    ])
-      .then(([vf, af, as_]) => {
-        setVideoFormats(vf.data ?? []);
-        setAdFormats(af.data ?? []);
-        setAdSubjects(as_.data ?? []);
-      })
-      .catch(() => {});
-  }, []);
 
   // Загружаем данные объявления и предзаполняем форму через реальный API
   useEffect(() => {

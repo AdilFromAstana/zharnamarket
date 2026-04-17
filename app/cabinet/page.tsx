@@ -23,9 +23,9 @@ import type { CreatorProfile } from "@/lib/types/creator";
 import { AVAILABILITY_COLORS, AVAILABILITY_LABELS } from "@/lib/constants";
 import { api } from "@/lib/api-client";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useBalance } from "@/hooks/useBalance";
 import { formatPrice, formatRelative } from "@/lib/utils";
 import StarRating from "@/components/reviews/StarRating";
-import TopupDrawer from "@/components/balance/TopupDrawer";
 
 interface UserData {
   id: string;
@@ -79,8 +79,7 @@ export default function CabinetPage() {
     written: [],
     received: [],
   });
-  const [walletBalance, setWalletBalance] = useState<number | null>(null);
-  const [topupOpen, setTopupOpen] = useState(false);
+  const walletBalance = useBalance();
 
   useEffect(() => {
     // Не загружаем данные пока не проверена авторизация
@@ -95,7 +94,6 @@ export default function CabinetPage() {
           profilesData,
           paymentsData,
           reviewsData,
-          balanceData,
         ] = await Promise.all([
           api.get<UserData>("/api/users/me"),
           api.get<Ad[]>("/api/tasks/my?status=active").catch(() => [] as Ad[]),
@@ -108,18 +106,12 @@ export default function CabinetPage() {
           api
             .get<MyReviewsData>("/api/reviews/my")
             .catch(() => ({ written: [], received: [] }) as MyReviewsData),
-          api
-            .get<{ balance: { current: number } }>("/api/balance")
-            .catch(() => ({ balance: { current: 0 } })),
         ]);
         setUser(userData);
         setMyAds((adsData as Ad[]).slice(0, 3));
         setMyProfiles(profilesData as CreatorProfile[]);
         setPayments((paymentsData as { data: PaymentRecord[] }).data ?? []);
         setMyReviews(reviewsData as MyReviewsData);
-        setWalletBalance(
-          (balanceData as { balance: { current: number } }).balance.current,
-        );
       } catch {
         // ошибка — данные не загружены
       } finally {
@@ -188,19 +180,20 @@ export default function CabinetPage() {
             </p>
           </div>
           <div className="flex gap-2 shrink-0">
-            <Button
-              size="large"
-              icon={<ArrowUpOutlined />}
-              onClick={() => setTopupOpen(true)}
-              style={{
-                background: "#fff",
-                borderColor: "#fff",
-                color: "#0369a1",
-                fontWeight: 600,
-              }}
-            >
-              Пополнить
-            </Button>
+            <Link href="/cabinet/balance/topup">
+              <Button
+                size="large"
+                icon={<ArrowUpOutlined />}
+                style={{
+                  background: "#fff",
+                  borderColor: "#fff",
+                  color: "#0369a1",
+                  fontWeight: 600,
+                }}
+              >
+                Пополнить
+              </Button>
+            </Link>
             <Link href="/cabinet/balance">
               <Button
                 size="large"
@@ -691,7 +684,6 @@ export default function CabinetPage() {
         </div>
       )}
 
-      <TopupDrawer open={topupOpen} onClose={() => setTopupOpen(false)} />
     </>
   );
 }

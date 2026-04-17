@@ -28,6 +28,10 @@ import {
   PhoneOutlined,
   MobileOutlined,
   CloseOutlined,
+  GoogleOutlined,
+  LinkOutlined,
+  DisconnectOutlined,
+  EditOutlined,
 } from "@ant-design/icons";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -100,6 +104,10 @@ interface UserData {
   email: string;
   phone: string | null;
   avatar: string | null;
+  googleId: string | null;
+  telegramId: string | null;
+  telegramUsername: string | null;
+  hasPassword: boolean;
 }
 
 interface Session {
@@ -158,6 +166,415 @@ function Section({
   );
 }
 
+// ─── Telegram Icon ───────────────────────────────────────────────────────
+function TelegramIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="1em"
+      height="1em"
+      fill="currentColor"
+      aria-hidden="true"
+      style={{ verticalAlign: "-0.125em" }}
+    >
+      <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z" />
+    </svg>
+  );
+}
+
+// ─── Email Change Field ──────────────────────────────────────────────────
+function EmailChangeField({ currentEmail }: { currentEmail: string }) {
+  const [mode, setMode] = useState<"view" | "edit" | "verify">("view");
+  const [newEmail, setNewEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleRequestCode = async () => {
+    if (!newEmail.trim()) return;
+    setLoading(true);
+    try {
+      await api.post("/api/users/me/change-email", { newEmail: newEmail.trim() });
+      toast.success("Код отправлен на новый email");
+      setMode("verify");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Ошибка";
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerify = async () => {
+    if (!code.trim()) return;
+    setLoading(true);
+    try {
+      await api.post("/api/users/me/verify-email-change", { code: code.trim() });
+      toast.success("Email успешно изменён");
+      window.location.reload();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Неверный код";
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (mode === "view") {
+    return (
+      <div className="!mb-1">
+        <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+        <div className="flex items-center gap-2">
+          <Input
+            prefix={<MailOutlined className="text-gray-400" />}
+            value={currentEmail}
+            disabled
+            className="!text-gray-600"
+            size="large"
+          />
+          <Button
+            icon={<EditOutlined />}
+            onClick={() => { setNewEmail(""); setMode("edit"); }}
+            size="large"
+          >
+            Изменить
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === "edit") {
+    return (
+      <div className="!mb-1">
+        <label className="block text-sm font-medium text-gray-700 mb-2">Новый email</label>
+        <div className="flex items-center gap-2">
+          <Input
+            prefix={<MailOutlined className="text-gray-400" />}
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            placeholder="Введите новый email"
+            size="large"
+            onPressEnter={handleRequestCode}
+          />
+          <Button
+            type="primary"
+            loading={loading}
+            onClick={handleRequestCode}
+            size="large"
+            style={{ background: ACCENT, borderColor: ACCENT }}
+          >
+            Отправить код
+          </Button>
+          <Button
+            size="large"
+            onClick={() => setMode("view")}
+          >
+            Отмена
+          </Button>
+        </div>
+        <p className="text-xs text-gray-400 mt-1.5">
+          Код подтверждения будет отправлен на новый адрес.
+        </p>
+      </div>
+    );
+  }
+
+  // mode === "verify"
+  return (
+    <div className="!mb-1">
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        Код подтверждения
+      </label>
+      <p className="text-sm text-gray-500 mb-2">
+        Введите 6-значный код, отправленный на <strong>{newEmail}</strong>
+      </p>
+      <div className="flex items-center gap-2">
+        <Input
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder="000000"
+          maxLength={6}
+          size="large"
+          className="!max-w-[180px] !text-center !tracking-widest !font-mono !text-lg"
+          onPressEnter={handleVerify}
+        />
+        <Button
+          type="primary"
+          loading={loading}
+          onClick={handleVerify}
+          size="large"
+          style={{ background: ACCENT, borderColor: ACCENT }}
+        >
+          Подтвердить
+        </Button>
+        <Button
+          size="large"
+          onClick={() => { setCode(""); setMode("edit"); }}
+        >
+          Назад
+        </Button>
+      </div>
+      <p className="text-xs text-gray-400 mt-1.5">
+        Код действителен 15 минут.{" "}
+        <button
+          type="button"
+          className="text-sky-600 hover:underline"
+          onClick={handleRequestCode}
+        >
+          Отправить повторно
+        </button>
+      </p>
+    </div>
+  );
+}
+
+// ─── Connected Accounts Section ──────────────────────────────────────────
+function ConnectedAccountsSection({
+  user,
+  onRefresh,
+}: {
+  user: UserData | null;
+  onRefresh: () => void;
+}) {
+  const [unlinkingProvider, setUnlinkingProvider] = useState<string | null>(null);
+  const [showSetPassword, setShowSetPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [settingPassword, setSettingPassword] = useState(false);
+  const strength = getPasswordStrength(newPassword);
+
+  const handleUnlink = async (provider: "google" | "telegram") => {
+    Modal.confirm({
+      title: `Отвязать ${provider === "google" ? "Google" : "Telegram"}?`,
+      content: "Вы больше не сможете входить через этот метод.",
+      okText: "Отвязать",
+      okType: "danger",
+      cancelText: "Отмена",
+      onOk: async () => {
+        setUnlinkingProvider(provider);
+        try {
+          await api.post("/api/users/me/unlink", { provider });
+          toast.success(`${provider === "google" ? "Google" : "Telegram"} отвязан`);
+          onRefresh();
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Ошибка";
+          toast.error(msg);
+        } finally {
+          setUnlinkingProvider(null);
+        }
+      },
+    });
+  };
+
+  const handleSetPassword = async () => {
+    if (newPassword.length < 8) {
+      toast.error("Минимум 8 символов");
+      return;
+    }
+    setSettingPassword(true);
+    try {
+      await api.post("/api/users/me/set-password", { password: newPassword });
+      toast.success("Пароль установлен");
+      setShowSetPassword(false);
+      setNewPassword("");
+      onRefresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Ошибка";
+      toast.error(msg);
+    } finally {
+      setSettingPassword(false);
+    }
+  };
+
+  if (!user) return null;
+
+  const providers: {
+    key: string;
+    label: string;
+    icon: React.ReactNode;
+    connected: boolean;
+    detail: string | null;
+    color: string;
+    onLink: () => void;
+    onUnlink: () => void;
+  }[] = [
+    {
+      key: "google",
+      label: "Google",
+      icon: <GoogleOutlined style={{ fontSize: 20 }} />,
+      connected: !!user.googleId,
+      detail: user.googleId ? "Привязан" : null,
+      color: "#ea4335",
+      onLink: () => { window.location.href = "/api/auth/google/link"; },
+      onUnlink: () => handleUnlink("google"),
+    },
+    {
+      key: "telegram",
+      label: "Telegram",
+      icon: <TelegramIcon />,
+      connected: !!user.telegramId,
+      detail: user.telegramUsername ? `@${user.telegramUsername}` : user.telegramId ? "Привязан" : null,
+      color: "#0088cc",
+      onLink: () => { window.location.href = "/api/auth/telegram"; },
+      onUnlink: () => handleUnlink("telegram"),
+    },
+  ];
+
+  return (
+    <Section
+      title="Способы входа"
+      description="Управляйте методами авторизации. Нельзя отвязать последний способ входа."
+    >
+      <div className="space-y-2">
+        {providers.map((p) => (
+          <div
+            key={p.key}
+            className={[
+              "flex items-center justify-between gap-3 p-3 sm:p-4 rounded-xl border transition-colors",
+              p.connected
+                ? "border-emerald-200 bg-emerald-50/40"
+                : "border-gray-200 bg-white",
+            ].join(" ")}
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div
+                className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+                style={{
+                  background: p.connected ? `${p.color}15` : "#f3f4f6",
+                  color: p.connected ? p.color : "#9ca3af",
+                }}
+              >
+                {p.icon}
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                  {p.label}
+                  {p.connected && (
+                    <Tag color="green" className="!m-0 text-xs">Привязан</Tag>
+                  )}
+                </div>
+                {p.detail && p.connected && (
+                  <div className="text-xs text-gray-500 mt-0.5">{p.detail}</div>
+                )}
+              </div>
+            </div>
+            {p.connected ? (
+              <Button
+                size="small"
+                type="text"
+                danger
+                icon={<DisconnectOutlined />}
+                loading={unlinkingProvider === p.key}
+                onClick={p.onUnlink}
+              >
+                Отвязать
+              </Button>
+            ) : (
+              <Button
+                size="small"
+                type="default"
+                icon={<LinkOutlined />}
+                onClick={p.onLink}
+              >
+                Привязать
+              </Button>
+            )}
+          </div>
+        ))}
+
+        {/* Password row */}
+        <div
+          className={[
+            "flex items-center justify-between gap-3 p-3 sm:p-4 rounded-xl border transition-colors",
+            user.hasPassword
+              ? "border-emerald-200 bg-emerald-50/40"
+              : "border-gray-200 bg-white",
+          ].join(" ")}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+              style={{
+                background: user.hasPassword ? `${ACCENT}15` : "#f3f4f6",
+                color: user.hasPassword ? ACCENT : "#9ca3af",
+              }}
+            >
+              <LockOutlined style={{ fontSize: 20 }} />
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                Пароль
+                {user.hasPassword && (
+                  <Tag color="green" className="!m-0 text-xs">Установлен</Tag>
+                )}
+              </div>
+              {!user.hasPassword && (
+                <div className="text-xs text-gray-500 mt-0.5">
+                  Установите пароль для входа по email
+                </div>
+              )}
+            </div>
+          </div>
+          {!user.hasPassword && !showSetPassword && (
+            <Button
+              size="small"
+              type="default"
+              icon={<LockOutlined />}
+              onClick={() => setShowSetPassword(true)}
+            >
+              Установить
+            </Button>
+          )}
+          {user.hasPassword && (
+            <CheckCircleOutlined className="text-emerald-500 text-lg shrink-0" />
+          )}
+        </div>
+
+        {/* Set password inline form */}
+        {showSetPassword && !user.hasPassword && (
+          <div className="p-4 rounded-xl border border-sky-200 bg-sky-50/40 space-y-3">
+            <div>
+              <Input.Password
+                prefix={<LockOutlined className="text-gray-400" />}
+                placeholder="Минимум 8 символов"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                size="large"
+                onPressEnter={handleSetPassword}
+              />
+              {newPassword && (
+                <div className="mt-2">
+                  <Progress
+                    percent={(strength.score / 5) * 100}
+                    strokeColor={strength.color}
+                    showInfo={false}
+                    size="small"
+                  />
+                  <span className="text-xs" style={{ color: strength.color }}>
+                    {strength.label}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="primary"
+                loading={settingPassword}
+                onClick={handleSetPassword}
+                style={{ background: ACCENT, borderColor: ACCENT }}
+              >
+                Установить пароль
+              </Button>
+              <Button onClick={() => { setShowSetPassword(false); setNewPassword(""); }}>
+                Отмена
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Section>
+  );
+}
+
 // ─── Account Tab ──────────────────────────────────────────────────────────
 function AccountTab({
   user,
@@ -178,6 +595,8 @@ function AccountTab({
 }) {
   const [form] = Form.useForm();
   const [uploading, setUploading] = useState(false);
+  const lastSaveSignal = useRef(saveSignal);
+  const lastResetSignal = useRef(resetSignal);
 
   useEffect(() => {
     if (!user) return;
@@ -190,7 +609,8 @@ function AccountTab({
 
   // Reset form on resetSignal
   useEffect(() => {
-    if (resetSignal === 0) return;
+    if (resetSignal === lastResetSignal.current) return;
+    lastResetSignal.current = resetSignal;
     if (!user) return;
     form.setFieldsValue({
       name: user.name ?? "",
@@ -201,7 +621,8 @@ function AccountTab({
 
   // Save on saveSignal
   useEffect(() => {
-    if (saveSignal === 0) return;
+    if (saveSignal === lastSaveSignal.current) return;
+    lastSaveSignal.current = saveSignal;
     (async () => {
       try {
         const values = (await form.validateFields()) as { name: string; phone: string };
@@ -332,20 +753,7 @@ function AccountTab({
             </Form.Item>
           </div>
 
-          <Form.Item label="Email" name="email" className="!mb-1">
-            <Input
-              prefix={<MailOutlined className="text-gray-400" />}
-              disabled
-              className="!text-gray-600"
-            />
-          </Form.Item>
-          <p className="text-xs text-gray-400">
-            Email нельзя сменить самостоятельно — напишите в{" "}
-            <a className="text-sky-600 hover:underline" href="mailto:support@zharnamarket.kz">
-              поддержку
-            </a>
-            .
-          </p>
+          <EmailChangeField currentEmail={user?.email ?? ""} />
         </Form>
       </Section>
     </div>
@@ -355,14 +763,18 @@ function AccountTab({
 // ─── Security Tab ─────────────────────────────────────────────────────────
 function SecurityTab({
   loading,
+  user,
   onPasswordChange,
   onLogout,
   onDeleteAccount,
+  onRefreshUser,
 }: {
   loading: boolean;
+  user: UserData | null;
   onPasswordChange: (passwords: { currentPassword: string; newPassword: string }) => Promise<void>;
   onLogout: () => void;
   onDeleteAccount: () => void;
+  onRefreshUser: () => void;
 }) {
   const [form] = Form.useForm();
   const [newPassword, setNewPassword] = useState("");
@@ -446,6 +858,8 @@ function SecurityTab({
 
   return (
     <div className="divide-y divide-gray-100">
+      <ConnectedAccountsSection user={user} onRefresh={onRefreshUser} />
+
       <Section title="Пароль" description="Используйте не менее 8 символов, включая цифры и буквы разного регистра.">
         <Form form={form} layout="vertical" size="large" requiredMark={false}>
           <Form.Item
@@ -790,12 +1204,12 @@ export default function SettingsPage() {
   const handleSaveProfile = async (values: { name: string; phone: string }) => {
     setProfileLoading(true);
     try {
-      const updated = await api.patch<UserData>("/api/users/me", {
+      await api.patch<UserData>("/api/users/me", {
         name: values.name,
         phone: values.phone,
       });
-      setUser(updated);
       toast.success("Профиль обновлён");
+      window.location.reload();
     } catch {
       toast.error("Ошибка сохранения");
       throw new Error("save failed");
@@ -852,8 +1266,12 @@ export default function SettingsPage() {
     security: (
       <SecurityTab
         loading={passwordLoading}
+        user={user}
         onPasswordChange={handleChangePassword}
         onLogout={handleLogout}
+        onRefreshUser={() => {
+          api.get<UserData>("/api/users/me").then(setUser).catch(() => {});
+        }}
         onDeleteAccount={async () => {
           try {
             await api.delete("/api/users/me");

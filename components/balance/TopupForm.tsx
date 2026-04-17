@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Button, InputNumber, Radio, Alert } from "antd";
-import { WalletOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { Button } from "antd";
+import { WalletOutlined, CreditCardOutlined } from "@ant-design/icons";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
 
@@ -11,11 +11,16 @@ const MIN_AMOUNT = 100;
 
 type PaymentMethod = "kaspi" | "halyk" | "card";
 
-const METHOD_LABELS: Record<PaymentMethod, string> = {
-  kaspi: "Kaspi Pay",
-  halyk: "Halyk Bank",
-  card: "Банковская карта",
-};
+interface MethodOption {
+  key: PaymentMethod;
+  label: string;
+}
+
+const METHODS: MethodOption[] = [
+  { key: "kaspi", label: "Kaspi Pay" },
+  { key: "halyk", label: "Halyk Bank" },
+  { key: "card", label: "Visa / MC" },
+];
 
 interface TopupFormProps {
   initialAmount?: number | null;
@@ -51,80 +56,106 @@ export default function TopupForm({
     }
   };
 
-  return (
-    <div className="space-y-4">
-      <div className="bg-white rounded-2xl border border-gray-200 p-5">
-        <h2 className="text-sm font-semibold text-gray-700 mb-3">
-          Сумма пополнения
-        </h2>
+  const handleAmountInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\s/g, "").replace(/[^\d]/g, "");
+    if (raw === "") {
+      setAmount(null);
+      return;
+    }
+    setAmount(Number(raw));
+  };
 
-        <div className="grid grid-cols-4 gap-2 mb-4">
-          {QUICK_AMOUNTS.map((q) => (
-            <button
-              key={q}
-              type="button"
-              onClick={() => setAmount(q)}
-              className={`py-2 px-1 rounded-xl text-sm font-medium border transition-all ${
-                amount === q
-                  ? "bg-emerald-500 text-white border-emerald-500"
-                  : "bg-gray-50 text-gray-600 border-gray-200 hover:border-emerald-300 hover:text-emerald-600"
-              }`}
-            >
-              {q.toLocaleString("ru")} ₸
-            </button>
-          ))}
+  const displayAmount = amount !== null
+    ? amount.toLocaleString("ru")
+    : "";
+
+  const isQuickSelected = amount !== null && QUICK_AMOUNTS.includes(amount);
+
+  return (
+    <div className="space-y-5">
+      {/* ── Amount — large centered input ─────────── */}
+      <div className="text-center pt-2">
+        <div className="relative inline-flex items-baseline justify-center gap-1">
+          <input
+            type="text"
+            inputMode="numeric"
+            value={displayAmount}
+            onChange={handleAmountInput}
+            placeholder="0"
+            className="text-4xl font-bold text-gray-900 text-center bg-transparent outline-none w-44 placeholder:text-gray-300"
+          />
+          <span className="text-2xl font-semibold text-gray-400">₸</span>
         </div>
 
-        <InputNumber
-          value={amount}
-          onChange={(v) => setAmount(v)}
-          min={MIN_AMOUNT}
-          max={10_000_000}
-          formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, " ")}
-          parser={(v) => Number(v?.replace(/\s/g, "")) as never}
-          suffix="₸"
-          size="large"
-          className="w-full"
-          placeholder="Введите сумму"
-        />
-
-        {amount !== null && amount < MIN_AMOUNT && (
+        {amount !== null && amount > 0 && amount < MIN_AMOUNT && (
           <p className="text-xs text-red-500 mt-1">
-            Минимальная сумма: {MIN_AMOUNT} ₸
+            Минимум: {MIN_AMOUNT} ₸
           </p>
         )}
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-200 p-5">
-        <h2 className="text-sm font-semibold text-gray-700 mb-3">
-          Способ оплаты
-        </h2>
-        <Radio.Group
-          value={method}
-          onChange={(e) => setMethod(e.target.value)}
-          className="flex flex-col gap-2"
-        >
-          {(Object.keys(METHOD_LABELS) as PaymentMethod[]).map((m) => (
-            <Radio key={m} value={m} className="font-medium">
-              {METHOD_LABELS[m]}
-            </Radio>
-          ))}
-        </Radio.Group>
+      {/* ── Quick amount chips ────────────────────── */}
+      <div className="grid grid-cols-4 gap-2">
+        {QUICK_AMOUNTS.map((q) => (
+          <button
+            key={q}
+            type="button"
+            onClick={() => setAmount(q)}
+            className={`py-2.5 px-1 rounded-xl text-sm font-medium border transition-all active:scale-95 ${
+              amount === q
+                ? "bg-emerald-500 text-white border-emerald-500 shadow-sm"
+                : "bg-gray-50 text-gray-600 border-gray-200 hover:border-emerald-300 hover:text-emerald-600"
+            }`}
+          >
+            {q.toLocaleString("ru")} ₸
+          </button>
+        ))}
       </div>
 
-      <Alert
-        type="info"
-        showIcon
-        icon={<WalletOutlined />}
-        message="Деньги зачислятся на кошелёк сразу после успешной оплаты."
-        className="rounded-xl"
-      />
+      {/* ── Payment method — compact row ──────────── */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-700 mb-2">
+          Способ оплаты
+        </h3>
+        <div className="grid grid-cols-3 gap-2">
+          {METHODS.map((m) => (
+            <button
+              key={m.key}
+              type="button"
+              onClick={() => setMethod(m.key)}
+              className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 transition-all active:scale-[0.97] ${
+                method === m.key
+                  ? "border-emerald-500 bg-emerald-50"
+                  : "border-gray-100 bg-gray-50 hover:border-gray-200"
+              }`}
+            >
+              <div
+                className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                  method === m.key
+                    ? "bg-emerald-500 text-white"
+                    : "bg-gray-200 text-gray-500"
+                }`}
+              >
+                <CreditCardOutlined className="text-base" />
+              </div>
+              <span
+                className={`text-xs font-medium leading-tight text-center ${
+                  method === m.key ? "text-emerald-700" : "text-gray-600"
+                }`}
+              >
+                {m.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
 
+      {/* ── CTA ──────────────────────────────────── */}
       <Button
         type="primary"
         size="large"
         block
-        icon={<ThunderboltOutlined />}
+        icon={<WalletOutlined />}
         onClick={handleTopup}
         loading={loading}
         disabled={!amount || amount < MIN_AMOUNT}

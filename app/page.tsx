@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { Button } from "antd";
 import PublicLayout from "@/components/layout/PublicLayout";
+import JsonLd, {
+  organizationSchema,
+  webSiteSchema,
+  siteNavigationSchema,
+  faqSchema,
+} from "@/components/seo/JsonLd";
 
 export const dynamic = "force-dynamic";
 import AdCard from "@/components/ads/AdCard";
@@ -51,10 +57,10 @@ export const metadata = {
     locale: "ru_KZ",
     images: [
       {
-        url: "/og-default.svg",
+        url: "/opengraph-image.png",
         width: 1200,
         height: 630,
-        alt: "Zharnamarket",
+        alt: "Zharnamarket — реклама через блогеров в Казахстане",
       },
     ],
   },
@@ -142,6 +148,45 @@ export default async function HomePage() {
 
   return (
     <PublicLayout>
+      <JsonLd
+        data={[
+          organizationSchema(),
+          webSiteSchema(),
+          ...siteNavigationSchema(),
+          faqSchema([
+            {
+              question: "Как начать зарабатывать на создании видеорекламы?",
+              answer:
+                "Зарегистрируйтесь на zharnamarket.kz, создайте профиль автора, загрузите портфолио и опишите какие форматы видео вы делаете — вирусные ролики, обзоры, сторителлинг, продакт-плейсмент или любые другие. Бизнесы найдут вас в каталоге или вы сами откликнетесь на их объявления.",
+            },
+            {
+              question: "Какие форматы видеоконтента подходят для Zharnamarket?",
+              answer:
+                "Любые форматы видео, через которые можно продвигать товары, услуги, мероприятия или идеи: вирусные ролики с рекламным баннером, сторителлинг с нативной интеграцией, видеообзоры, продакт-плейсмент, UGC, прямая реклама, челленджи, распаковки и многое другое.",
+            },
+            {
+              question: "Для каких брендов можно создавать контент?",
+              answer:
+                "На Zharnamarket размещают объявления компании из разных сфер: еда, красота, мода, технологии, образование и другие. Вы можете выбирать проекты по интересу и специализации.",
+            },
+            {
+              question: "Как найти автора для видеорекламы в Казахстане?",
+              answer:
+                "Разместите объявление с описанием задачи и бюджетом на Zharnamarket — авторы видео сами найдут ваше объявление и отправят отклик. Также можете найти подходящего автора в каталоге по фильтрам: город, платформа, формат, рейтинг.",
+            },
+            {
+              question: "Нужно ли быть блогером с большой аудиторией?",
+              answer:
+                "Нет. На Zharnamarket работают авторы с любым количеством подписчиков. Бизнесу важно качество контента и формат, а не число фолловеров. Даже без своих каналов можно создавать контент для соцсетей бренда.",
+            },
+            {
+              question: "В каких городах работает Zharnamarket?",
+              answer:
+                "Платформа работает по всему Казахстану: Алматы, Астана, Шымкент, Караганда, Актобе, Атырау и другие города.",
+            },
+          ]),
+        ]}
+      />
       {/* Hero — один primary CTA, один secondary как текстовая ссылка */}
       <section className="text-center py-10 md:py-14 mb-8 md:mb-12">
         <h1 className="text-3xl md:text-5xl font-bold text-gray-900 mb-4 leading-tight">

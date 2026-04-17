@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { CloseOutlined, FilterOutlined } from "@ant-design/icons";
-import { getCities, getPlatforms, getCategories } from "@/lib/constants";
 import type { CreatorFilters, CreatorFacets } from "@/lib/types/creator";
+import { useCities, usePlatforms, useCategories } from "@/hooks/useRefData";
 
 interface CreatorFiltersProps {
   filters: CreatorFilters;
@@ -363,28 +363,9 @@ export default function CreatorFiltersComponent({
   onReset,
   facets,
 }: CreatorFiltersProps) {
-  const [cities, setCities] = useState<{ key: string; label: string }[]>([]);
-  const [platforms, setPlatforms] = useState<{ key: string; label: string }[]>([]);
-  const [categories, setCategories] = useState<{ key: string; label: string }[]>([]);
-
-  useEffect(() => {
-    const loadReferenceData = async () => {
-      try {
-        const [citiesData, platformsData, categoriesData] = await Promise.all([
-          getCities(),
-          getPlatforms(),
-          getCategories(),
-        ]);
-        setCities(citiesData);
-        setPlatforms(platformsData);
-        setCategories(categoriesData);
-      } catch (error) {
-        console.error("Error loading reference data:", error);
-      }
-    };
-
-    loadReferenceData();
-  }, []);
+  const { data: cities = [] } = useCities();
+  const { data: platforms = [] } = usePlatforms();
+  const { data: categories = [] } = useCategories();
 
   const PLATFORM_ITEMS = useMemo<FilterItem[]>(
     () => platforms.map((p) => ({ label: p.label, value: p.key })),

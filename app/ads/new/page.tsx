@@ -3,32 +3,27 @@
 import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { Breadcrumb, Button, Form } from "antd";
-import {
-  ArrowRightOutlined,
-  ArrowLeftOutlined,
-  CloseOutlined,
-  CreditCardOutlined,
-} from "@ant-design/icons";
+import { ArrowRightOutlined, CreditCardOutlined } from "@ant-design/icons";
 import { useRouter, useSearchParams } from "next/navigation";
 import PublicLayout from "@/components/layout/PublicLayout";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import StickyBottomBar from "@/components/ui/StickyBottomBar";
 import { PUBLICATION_PRICE, STORAGE_KEYS } from "@/lib/constants";
 import { api, ApiError } from "@/lib/api-client";
+import { useBalance } from "@/hooks/useBalance";
 import type { BudgetType } from "@/lib/types/ad";
 import type { PaymentMethod } from "@/lib/types/payment";
-import { formatPrice } from "@/lib/utils";
 import { toast } from "sonner";
 
 import {
   type FormValues,
   type Step0Values,
-  type CategoryOption,
   type PromoResult,
   type PaymentMode,
   EMPTY_FORM,
   formatBudgetPreview,
 } from "./_types";
+import { useVideoFormats, useAdFormats, useAdSubjects } from "@/hooks/useRefData";
 
 import StepHeader from "./_components/StepHeader";
 import StepSidebar from "./_components/StepSidebar";
@@ -56,12 +51,8 @@ function NewAdPageInner() {
   const [adImages, setAdImages] = useState<string[]>([]);
   const [imageUploading, setImageUploading] = useState(false);
 
-  const [videoFormats, setVideoFormats] = useState<CategoryOption[]>([]);
-  const [adFormats, setAdFormats] = useState<CategoryOption[]>([]);
-  const [adSubjects, setAdSubjects] = useState<CategoryOption[]>([]);
-
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("kaspi");
-  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const walletBalance = useBalance();
 
   const [promoCodeInput, setPromoCodeInput] = useState("");
   const [promoLoading, setPromoLoading] = useState(false);
@@ -69,20 +60,9 @@ function NewAdPageInner() {
 
   const [createdAdId, setCreatedAdId] = useState<string | null>(null);
 
-  // Load category options
-  useEffect(() => {
-    Promise.all([
-      api.get<{ data: CategoryOption[] }>("/api/video-formats"),
-      api.get<{ data: CategoryOption[] }>("/api/ad-formats"),
-      api.get<{ data: CategoryOption[] }>("/api/ad-subjects"),
-    ])
-      .then(([vf, af, as_]) => {
-        setVideoFormats(vf.data ?? []);
-        setAdFormats(af.data ?? []);
-        setAdSubjects(as_.data ?? []);
-      })
-      .catch(() => {});
-  }, []);
+  const { data: videoFormats = [] } = useVideoFormats();
+  const { data: adFormats = [] } = useAdFormats();
+  const { data: adSubjects = [] } = useAdSubjects();
 
   // Проверяем — нужен ли шаг 0
   useEffect(() => {
@@ -130,25 +110,17 @@ function NewAdPageInner() {
     }
   }, [searchParams]);
 
-  // Баланс кошелька при шаге 4 + smart default для способа оплаты
+  // Smart default: auto-select wallet payment if sufficient balance
   useEffect(() => {
-    if (step === 4) {
-      api
-        .get<{ balance: { current: number } }>("/api/balance")
-        .then((r) => {
-          const bal = r.balance.current;
-          setWalletBalance(bal);
-          // Smart default: auto-select wallet if sufficient balance
-          const needed = isEscrowMode
-            ? (form.getFieldValue("totalBudget") ?? 0)
-            : finalPayPrice;
-          if (bal >= needed) {
-            setPaymentMethod("wallet");
-          }
-        })
-        .catch(() => setWalletBalance(0));
+    if (step === 4 && walletBalance !== null) {
+      const needed = isEscrowMode
+        ? (form.getFieldValue("totalBudget") ?? 0)
+        : finalPayPrice;
+      if (walletBalance >= needed) {
+        setPaymentMethod("wallet");
+      }
     }
-  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [step, walletBalance]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveDraft = (changed: Partial<FormValues>) => {
     const current = { ...values, ...changed };
@@ -220,15 +192,26 @@ function NewAdPageInner() {
         `/api/promo/validate?code=${encodeURIComponent(promoCodeInput.trim())}&type=ad_publication&amount=${PUBLICATION_PRICE}`,
       );
       const data = await res.json();
-      setPromoResult(data);
+      if (data.valid) {
+        setPromoResult(data);
+      } else {
+        toast.error(data.message || "Промокод не найден");
+      }
     } catch {
-      setPromoResult({ valid: false, message: "Ошибка проверки промокода" });
+      toast.error("Ошибка проверки промокода");
     } finally {
       setPromoLoading(false);
     }
   };
 
   const handleToPayment = async () => {
+    // If ad was already created (user went back from step 4), just go to payment
+    if (createdAdId) {
+      setStep(4);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
     setLoading(true);
     try {
       const all = form.getFieldsValue(true) as FormValues;
@@ -293,6 +276,7 @@ function NewAdPageInner() {
   };
 
   const isEscrowMode = budgetType === "per_views" && paymentMode === "escrow";
+  const hasSidebar = step === 3 || step === 4;
 
   const handlePay = async () => {
     if (!createdAdId) {
@@ -387,17 +371,6 @@ function NewAdPageInner() {
       ? promoResult.finalAmount
       : PUBLICATION_PRICE;
 
-  const paymentMethodLabels: Record<PaymentMethod, string> = {
-    wallet: "Списать из кошелька",
-    kaspi: "Оплатить через Kaspi Pay",
-    halyk: "Оплатить через Halyk",
-    card: "Оплатить картой",
-  };
-
-  const step4Price = isEscrowMode
-    ? formatPrice(form.getFieldValue("totalBudget") ?? 0)
-    : formatPrice(finalPayPrice);
-
   const nextLabel =
     step === 0
       ? "Продолжить →"
@@ -407,9 +380,9 @@ function NewAdPageInner() {
           ? "Предпросмотр"
           : step === 3
             ? "К оплате"
-            : isEscrowMode && paymentMethod === "wallet"
-              ? `Заморозить ${step4Price}`
-              : `${paymentMethodLabels[paymentMethod]} ${step4Price}`;
+            : isEscrowMode
+              ? "Заморозить"
+              : "Оплатить";
 
   const stepTitle =
     step === 0
@@ -424,6 +397,7 @@ function NewAdPageInner() {
 
   return (
     <PublicLayout>
+      <div className="-mt-8 sm:mt-0" />
       <Breadcrumb
         className="mb-6 hidden sm:block"
         items={[
@@ -435,8 +409,14 @@ function NewAdPageInner() {
 
       <StepHeader step={step} stepTitle={stepTitle} stepLabels={stepLabels} />
 
-      <div className="max-w-5xl mx-auto">
-        <div className="lg:grid lg:grid-cols-[1fr_320px] lg:gap-8 lg:items-start">
+      <div>
+        <div
+          className={
+            hasSidebar
+              ? "lg:grid lg:grid-cols-[1fr_320px] lg:gap-8 lg:items-start"
+              : ""
+          }
+        >
           {/* Left column */}
           <div className="pb-28 lg:pb-8">
             {step === 0 && <Step0Form form={form0} />}
@@ -509,22 +489,21 @@ function NewAdPageInner() {
             )}
 
             {/* Desktop inline navigation */}
-            <div className="hidden lg:flex items-center gap-3 mt-6 pt-4 border-t border-gray-100">
+            <div className="hidden lg:flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
               {step >= 1 && (
-                <Button
-                  size="large"
-                  icon={step === 1 ? <CloseOutlined /> : <ArrowLeftOutlined />}
+                <button
+                  type="button"
                   onClick={
                     step === 1 ? () => router.push("/ads/manage") : handleBack
                   }
-                  style={{ height: 48, width: 48, flexShrink: 0, padding: 0 }}
-                  aria-label={step === 1 ? "Отменить" : "Назад"}
-                />
+                  className="text-sm text-gray-500 hover:text-gray-700 transition-colors cursor-pointer"
+                >
+                  {step === 1 ? "Отменить" : "← Назад"}
+                </button>
               )}
               <Button
                 type="primary"
                 size="large"
-                block
                 icon={
                   step === 4 ? <CreditCardOutlined /> : <ArrowRightOutlined />
                 }
@@ -532,12 +511,13 @@ function NewAdPageInner() {
                 onClick={handleNext}
                 loading={(step === 3 || step === 4) && loading}
                 style={{
-                  height: 48,
-                  fontSize: 16,
+                  height: 44,
+                  fontSize: 15,
                   fontWeight: 600,
+                  paddingLeft: 32,
+                  paddingRight: 32,
                   background: "#3B82F6",
                   borderColor: "#3B82F6",
-                  flex: 1,
                 }}
               >
                 {nextLabel}
@@ -545,18 +525,20 @@ function NewAdPageInner() {
             </div>
           </div>
 
-          {/* Right column — desktop sidebar */}
-          <aside className="hidden lg:block lg:sticky lg:top-[88px] self-start">
-            <StepSidebar
-              step={step}
-              budgetType={budgetType}
-              values={values}
-              form={form}
-              isEscrowMode={isEscrowMode}
-              finalPayPrice={finalPayPrice}
-              walletBalance={walletBalance}
-            />
-          </aside>
+          {/* Right column — desktop sidebar (only steps 3-4) */}
+          {(step === 3 || step === 4) && (
+            <aside className="hidden lg:block lg:sticky lg:top-[88px] self-start">
+              <StepSidebar
+                step={step}
+                budgetType={budgetType}
+                values={values}
+                form={form}
+                isEscrowMode={isEscrowMode}
+                finalPayPrice={finalPayPrice}
+                walletBalance={walletBalance}
+              />
+            </aside>
+          )}
         </div>
       </div>
 

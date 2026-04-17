@@ -1,0 +1,19 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "Zharnamarket",
+  "name_for_model": "zharnamarket",
+  "description_for_human": "Маркетплейс видеорекламы в Казахстане — бизнес и креаторы без посредников.",
+  "description_for_model": "Zharnamarket is a video advertising marketplace in Kazakhstan. Businesses post ad tasks (TikTok, Instagram, YouTube), and video content creators respond directly. The platform covers cities like Almaty, Astana, Shymkent, Karaganda. Content formats include viral videos, storytelling, product reviews, product placement, UGC, and more. The platform has an escrow payment system for secure transactions.",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://zharnamarket.kz/api/openapi.json",
+    "is_user_authenticated": false
+  },
+  "logo_url": "https://zharnamarket.kz/icon-512.png",
+  "contact_email": "support@zharnamarket.kz",
+  "legal_info_url": "https://zharnamarket.kz",
+  "llms_txt": "https://zharnamarket.kz/llms.txt"
+}

@@ -475,7 +475,7 @@ function AdsManagePageInner() {
           {
             label: "Всего обращений",
             value: ads.reduce(
-              (sum, a) => sum + a.metadata.contactClickCount,
+              (sum, a) => sum + (a.metadata?.contactClickCount ?? 0),
               0,
             ),
             color: "#0EA5E9",

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserId, unauthorized, serverError } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { mapPrismaAdToAd } from "@/lib/mappers/ad";
 
 // GET /api/ads/my — мои объявления (авторизован)
 export async function GET(req: NextRequest) {
@@ -39,7 +40,7 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    return NextResponse.json(ads);
+    return NextResponse.json(ads.map(mapPrismaAdToAd));
   } catch (err) {
     console.error("[GET /api/ads/my]", err);
     return serverError();

@@ -39,9 +39,9 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import PublicLayout from "@/components/layout/PublicLayout";
-import { getCities, getPlatforms, getCategories } from "@/lib/constants";
 import { api } from "@/lib/api-client";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useCities, usePlatforms, useCategories, useAdFormats } from "@/hooks/useRefData";
 
 // Типы для портфолио и платформ
 interface PortfolioItem {
@@ -57,12 +57,6 @@ interface PlatformData {
   handle: string;
   url: string;
   followers: number | null;
-}
-
-interface AdFormatOption {
-  id: string;
-  key: string;
-  label: string;
 }
 
 const QUICK_ADD_FORMATS = [
@@ -133,39 +127,12 @@ function EditCreatorPageInner() {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [screenshotUrls, setScreenshotUrls] = useState<string[]>([]);
   const [screenshotUploading, setScreenshotUploading] = useState(false);
-  const [adFormats, setAdFormats] = useState<AdFormatOption[]>([]);
-  const [cities, setCities] = useState<{ key: string; label: string }[]>([]);
-  const [platformsOptions, setPlatformsOptions] = useState<{ key: string; label: string }[]>([]);
-  const [categories, setCategories] = useState<{ key: string; label: string }[]>([]);
+  const { data: adFormats = [] } = useAdFormats();
+  const { data: cities = [] } = useCities();
+  const { data: platformsOptions = [] } = usePlatforms();
+  const { data: categories = [] } = useCategories();
 
   const profileId = searchParams.get("id") ?? "";
-
-  useEffect(() => {
-    fetch("/api/ad-formats")
-      .then((r) => r.json())
-      .then((data) => setAdFormats(data.data ?? []))
-      .catch(() => {});
-  }, []);
-
-  // Загружаем справочные данные
-  useEffect(() => {
-    const loadReferenceData = async () => {
-      try {
-        const [citiesData, platformsData, categoriesData] = await Promise.all([
-          getCities(),
-          getPlatforms(),
-          getCategories(),
-        ]);
-        setCities(citiesData);
-        setPlatformsOptions(platformsData);
-        setCategories(categoriesData);
-      } catch (error) {
-        console.error("Error loading reference data:", error);
-      }
-    };
-
-    loadReferenceData();
-  }, []);
 
   useEffect(() => {
     if (!profileId) {
@@ -175,12 +142,9 @@ function EditCreatorPageInner() {
     }
 
     setLoadingData(true);
-    Promise.all([
-      api.get<CreatorApiResponse>(`/api/creators/${profileId}`),
-      getPlatforms(),
-    ])
-      .then(([data, platformsData]) => {
-        const platformKeys = platformsData.map((p) => p.key);
+    api.get<CreatorApiResponse>(`/api/creators/${profileId}`)
+      .then((data) => {
+        const platformKeys = platformsOptions.map((p) => p.key);
         setCreator(data);
         setPortfolioItems(data.portfolio ?? []);
         setAvatarUrl(data.avatar ?? null);
@@ -230,7 +194,7 @@ function EditCreatorPageInner() {
       .finally(() => {
         setLoadingData(false);
       });
-  }, [profileId, form]);
+  }, [profileId, form, platformsOptions]);
 
   const handleSave = async () => {
     let values: Record<string, unknown>;

@@ -1,16 +1,18 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { CloseOutlined, FilterOutlined } from "@ant-design/icons";
-import {
-  getCities,
-  getPlatforms,
-  getBudgetTypes,
-  BUDGET_TYPE_LABELS,
-} from "@/lib/constants";
+import { BUDGET_TYPE_LABELS, PAYMENT_MODE_LABELS } from "@/lib/constants";
 import BudgetTypeIcon from "@/components/ui/BudgetTypeIcon";
 import type { AdFilters, AdFacets, BudgetType } from "@/lib/types/ad";
-import { PAYMENT_MODE_LABELS } from "@/lib/constants";
+import {
+  useCities,
+  usePlatforms,
+  useBudgetTypes,
+  useVideoFormats,
+  useAdFormats,
+  useAdSubjects,
+} from "@/hooks/useRefData";
 
 interface AdFiltersProps {
   filters: AdFilters;
@@ -268,53 +270,6 @@ function BudgetTypeSection({
   );
 }
 
-/**
- * Dynamic filter section for DB-driven categories.
- * Always loads ALL active items from API on mount.
- * Shows counts from facets (0 if absent), disables items with count=0.
- * Behaves exactly like FilterSection but pulls items from the API.
- */
-function DynamicFacetSection({
-  title,
-  endpoint,
-  facetCounts,
-  selected,
-  onToggle,
-}: {
-  title: string;
-  endpoint: string;
-  facetCounts?: Record<string, number>;
-  selected: string[];
-  onToggle: (value: string) => void;
-}) {
-  const [items, setItems] = useState<FilterItem[]>([]);
-
-  useEffect(() => {
-    fetch(endpoint)
-      .then((r) => r.json())
-      .then((res) => {
-        setItems(
-          (res.data ?? []).map((item: { key: string; label: string }) => ({
-            label: item.label,
-            value: item.key,
-          })),
-        );
-      })
-      .catch(() => {});
-  }, [endpoint]);
-
-  if (items.length === 0) return null;
-
-  return (
-    <FilterSection
-      title={title}
-      items={items}
-      selected={selected}
-      onToggle={onToggle}
-      counts={facetCounts}
-    />
-  );
-}
 
 export default function AdFiltersComponent({
   filters,
@@ -322,28 +277,12 @@ export default function AdFiltersComponent({
   onReset,
   facets,
 }: AdFiltersProps) {
-  const [cities, setCities] = useState<{ key: string; label: string }[]>([]);
-  const [platforms, setPlatforms] = useState<{ key: string; label: string }[]>([]);
-  const [budgetTypes, setBudgetTypes] = useState<{ key: string; label: string }[]>([]);
-
-  useEffect(() => {
-    const loadReferenceData = async () => {
-      try {
-        const [citiesData, platformsData, budgetTypesData] = await Promise.all([
-          getCities(),
-          getPlatforms(),
-          getBudgetTypes(),
-        ]);
-        setCities(citiesData);
-        setPlatforms(platformsData);
-        setBudgetTypes(budgetTypesData);
-      } catch (error) {
-        console.error("Error loading reference data:", error);
-      }
-    };
-
-    loadReferenceData();
-  }, []);
+  const { data: cities = [] } = useCities();
+  const { data: platforms = [] } = usePlatforms();
+  const { data: budgetTypes = [] } = useBudgetTypes();
+  const { data: videoFormats = [] } = useVideoFormats();
+  const { data: adFormats = [] } = useAdFormats();
+  const { data: adSubjects = [] } = useAdSubjects();
 
   const PLATFORM_ITEMS = useMemo<FilterItem[]>(
     () => platforms.map((p) => ({ label: p.label, value: p.key })),
@@ -359,6 +298,18 @@ export default function AdFiltersComponent({
   const BUDGET_TYPE_ITEMS = useMemo<FilterItem[]>(
     () => budgetTypes.map((t) => ({ label: t.label, value: t.key })),
     [budgetTypes],
+  );
+  const VIDEO_FORMAT_ITEMS = useMemo<FilterItem[]>(
+    () => videoFormats.map((f) => ({ label: f.label, value: f.key })),
+    [videoFormats],
+  );
+  const AD_FORMAT_ITEMS = useMemo<FilterItem[]>(
+    () => adFormats.map((f) => ({ label: f.label, value: f.key })),
+    [adFormats],
+  );
+  const AD_SUBJECT_ITEMS = useMemo<FilterItem[]>(
+    () => adSubjects.map((s) => ({ label: s.label, value: s.key })),
+    [adSubjects],
   );
 
   const hasFilters = !!(
@@ -463,32 +414,31 @@ export default function AdFiltersComponent({
         counts={facets?.paymentMode}
       />
 
-      {/* Новые категорийные фильтры — всегда показываются (загружают из API) */}
       <div className="hidden md:block h-px bg-gray-100" />
-      <DynamicFacetSection
+      <FilterSection
         title="Формат видео"
-        endpoint="/api/video-formats"
-        facetCounts={facets?.videoFormat}
+        items={VIDEO_FORMAT_ITEMS}
         selected={filters.videoFormat ?? []}
         onToggle={(val) => toggleArray("videoFormat", val)}
+        counts={facets?.videoFormat}
       />
 
       <div className="hidden md:block h-px bg-gray-100" />
-      <DynamicFacetSection
+      <FilterSection
         title="Формат рекламы"
-        endpoint="/api/ad-formats"
-        facetCounts={facets?.adFormat}
+        items={AD_FORMAT_ITEMS}
         selected={filters.adFormat ?? []}
         onToggle={(val) => toggleArray("adFormat", val)}
+        counts={facets?.adFormat}
       />
 
       <div className="hidden md:block h-px bg-gray-100" />
-      <DynamicFacetSection
+      <FilterSection
         title="Что рекламируется"
-        endpoint="/api/ad-subjects"
-        facetCounts={facets?.adSubject}
+        items={AD_SUBJECT_ITEMS}
         selected={filters.adSubject ?? []}
         onToggle={(val) => toggleArray("adSubject", val)}
+        counts={facets?.adSubject}
       />
 
       <div className="hidden md:block h-px bg-gray-100" />

@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useState, useEffect } from "react";
+import { Dispatch, SetStateAction } from "react";
 import { Form, Input, Select, Upload, Spin } from "antd";
 import {
   CameraOutlined,
@@ -7,15 +7,10 @@ import {
 } from "@ant-design/icons";
 import type { FormInstance } from "antd";
 import { toast } from "sonner";
-import {
-  getCities,
-  getCategories,
-  getPlatforms,
-  type RefItem,
-} from "@/lib/constants";
 import RichTextEditor from "@/components/ui/RichTextEditor";
 import type { FormValues, CategoryOption } from "../_types";
 import { PLATFORM_ICONS } from "../_constants";
+import { useCities, useCategories, usePlatforms } from "@/hooks/useRefData";
 
 type Step1FormProps = {
   form: FormInstance<FormValues>;
@@ -44,29 +39,9 @@ export default function Step1Form({
   setAdImages,
   setImageUploading,
 }: Step1FormProps) {
-  const [cities, setCities] = useState<RefItem[]>([]);
-  const [categories, setCategories] = useState<RefItem[]>([]);
-  const [platforms, setPlatforms] = useState<RefItem[]>([]);
-
-  // Загружаем справочные данные
-  useEffect(() => {
-    const loadReferenceData = async () => {
-      try {
-        const [citiesData, categoriesData, platformsData] = await Promise.all([
-          getCities(),
-          getCategories(),
-          getPlatforms(),
-        ]);
-        setCities(citiesData);
-        setCategories(categoriesData);
-        setPlatforms(platformsData);
-      } catch (error) {
-        console.error("Error loading reference data:", error);
-      }
-    };
-
-    loadReferenceData();
-  }, []);
+  const { data: cities = [] } = useCities();
+  const { data: categories = [] } = useCategories();
+  const { data: platforms = [] } = usePlatforms();
   return (
     <>
       {/* Основная информация */}
@@ -185,15 +160,18 @@ export default function Step1Form({
           name="description"
           rules={[{ required: true, message: "Опишите задание" }]}
           extra={
-            <div className="mt-2 p-3 bg-blue-50 rounded-lg text-xs text-blue-700 space-y-0.5">
-              <p className="font-medium mb-1">Совет: укажите</p>
-              <p>• Продукт / услугу, которую нужно показать</p>
-              <p>
-                • Формат видео (обзор, анбоксинг, повседневное использование…)
-              </p>
-              <p>• Обязательные элементы (лого, ссылка, хэштег)</p>
-              <p>• Что нельзя делать</p>
-            </div>
+            <details className="mt-2 p-3 bg-blue-50 rounded-lg text-xs text-blue-700 group">
+              <summary className="font-medium cursor-pointer select-none list-none flex items-center gap-1 [&::-webkit-details-marker]:hidden">
+                <span className="text-blue-400 transition-transform group-open:rotate-90 inline-block">&#9654;</span>
+                Совет: что указать в описании
+              </summary>
+              <div className="mt-1.5 space-y-0.5">
+                <p>• Продукт / услугу, которую нужно показать</p>
+                <p>• Формат видео (обзор, анбоксинг, повседневное использование…)</p>
+                <p>• Обязательные элементы (лого, ссылка, хэштег)</p>
+                <p>• Что нельзя делать</p>
+              </div>
+            </details>
           }
         >
           <RichTextEditor placeholder="Опишите задание подробно: что нужно сделать, какие требования к видео, основные правила..." />

@@ -10,7 +10,7 @@ export default function StepHeader({
   stepLabels,
 }: StepHeaderProps) {
   return (
-    <div className="sticky top-14 md:top-16 z-10 bg-white -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 pt-4 pb-4 mb-4 border-b border-gray-100 shadow-sm">
+    <div className="sticky top-14 md:top-16 z-10 bg-white -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 pt-2 sm:pt-4 pb-3 sm:pb-4 mb-3 sm:mb-4 border-b border-gray-100 shadow-sm">
       <div className="hidden sm:flex gap-1.5 mb-3">
         {stepLabels.map((label, i) => {
           const num = i + 1;

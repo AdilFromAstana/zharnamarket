@@ -3,6 +3,7 @@ import PublicLayout from "@/components/layout/PublicLayout";
 import { mapCreatorFromApi } from "@/lib/mappers/creator";
 import CreatorDetailClient from "./CreatorDetailClient";
 import OtherCreatorProfiles from "./OtherCreatorProfiles";
+import JsonLd, { creatorProfileSchema, breadcrumbSchema } from "@/components/seo/JsonLd";
 import { prisma } from "@/lib/prisma";
 
 interface CreatorPageProps {
@@ -58,12 +59,32 @@ export async function generateMetadata({ params }: CreatorPageProps) {
   const { id } = await params;
   const creator = await fetchCreator(id);
   if (!creator) return { title: "Профиль не найден" };
+  const platformNames = creator.platforms?.map((p: { name: string }) => p.name) ?? [];
+  const keywords = [
+    creator.fullName,
+    creator.city || "Казахстан",
+    ...platformNames,
+    "креатор",
+    "блогер",
+    "видеоконтент",
+    "контент жасаушы",
+  ].filter(Boolean);
+
+  const bio = creator.bio || `${creator.fullName}, ${creator.city}`;
+  const desc = bio.length > 155 ? bio.slice(0, 155) + "…" : bio;
+
   return {
     title: `${creator.fullName} — Zharnamarket`,
-    description: creator.bio || `${creator.fullName}, ${creator.city}`,
+    description: desc,
+    keywords,
     openGraph: {
       title: `${creator.fullName} — Zharnamarket`,
-      description: creator.bio || `${creator.fullName}, ${creator.city}`,
+      description: desc,
+      type: "profile",
+      url: `https://zharnamarket.kz/creators/${id}`,
+    },
+    alternates: {
+      canonical: `/creators/${id}`,
     },
   };
 }
@@ -108,6 +129,25 @@ export default async function CreatorPage({ params }: CreatorPageProps) {
 
   return (
     <PublicLayout>
+      <JsonLd
+        data={[
+          breadcrumbSchema([
+            { name: "Главная", url: "https://zharnamarket.kz" },
+            { name: "Каталог креаторов", url: "https://zharnamarket.kz/creators" },
+            { name: creator.fullName, url: `https://zharnamarket.kz/creators/${creator.id}` },
+          ]),
+          creatorProfileSchema({
+            id: creator.id,
+            fullName: creator.fullName,
+            bio: creator.bio,
+            city: creator.city,
+            platforms: creator.platforms.map((p) => p.name),
+            avatar: creator.avatar,
+            rating: creator.averageRating,
+            reviewCount: creator.reviewCount,
+          }),
+        ]}
+      />
       <CreatorDetailClient creator={creator} />
       {otherProfiles.length > 0 && (
         <div className="max-w-6xl mx-auto mt-8">

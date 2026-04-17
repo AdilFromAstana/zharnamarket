@@ -12,6 +12,10 @@ const USER_SELECT = {
   avatarColor: true,
   role: true,
   emailVerified: true,
+  googleId: true,
+  telegramId: true,
+  telegramUsername: true,
+  password: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -29,7 +33,9 @@ export async function GET(req: NextRequest) {
 
     if (!user) return notFound("Пользователь не найден");
 
-    return NextResponse.json(user);
+    // Never expose password hash; expose hasPassword boolean instead
+    const { password, ...rest } = user;
+    return NextResponse.json({ ...rest, hasPassword: !!password });
   } catch (err) {
     console.error("[GET /api/users/me]", err);
     return serverError();

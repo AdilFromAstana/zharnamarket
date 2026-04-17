@@ -254,6 +254,30 @@ export async function sendPasswordChangedEmail(to: string): Promise<void> {
   await deliver(to, "Пароль изменён — Zharnamarket", wrapHtml(inner), "Password changed");
 }
 
+/**
+ * Код подтверждения для смены email.
+ */
+export async function sendEmailChangeCode(
+  to: string,
+  code: string,
+): Promise<void> {
+  const inner = `
+    <h2 style="color: #111827; font-size: 20px; margin-bottom: 12px; text-align: center;">Смена email</h2>
+    <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin-bottom: 24px; text-align: center;">
+      Вы запросили смену email. Введите код ниже, чтобы подтвердить новый адрес.
+    </p>
+    <div style="text-align: center; margin-bottom: 24px;">
+      <div style="display: inline-block; padding: 16px 32px; background: #f3f4f6; border-radius: 12px; letter-spacing: 8px; font-size: 32px; font-weight: 700; color: #111827; font-family: 'Courier New', monospace;">
+        ${code}
+      </div>
+    </div>
+    <p style="color: #9ca3af; font-size: 12px; line-height: 1.5; text-align: center;">
+      Код действителен <strong>15 минут</strong>. Если вы не запрашивали смену email — проигнорируйте это письмо.
+    </p>
+  `;
+  await deliver(to, `${code} — Смена email Zharnamarket`, wrapHtml(inner), "Email change code");
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")

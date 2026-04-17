@@ -8,9 +8,21 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       { source: "/balance", destination: "/cabinet/balance", permanent: true },
-      { source: "/balance/:path*", destination: "/cabinet/balance/:path*", permanent: true },
-      { source: "/settings", destination: "/cabinet/settings", permanent: true },
-      { source: "/settings/:path*", destination: "/cabinet/settings/:path*", permanent: true },
+      {
+        source: "/balance/:path*",
+        destination: "/cabinet/balance/:path*",
+        permanent: true,
+      },
+      {
+        source: "/settings",
+        destination: "/cabinet/settings",
+        permanent: true,
+      },
+      {
+        source: "/settings/:path*",
+        destination: "/cabinet/settings/:path*",
+        permanent: true,
+      },
     ];
   },
 };

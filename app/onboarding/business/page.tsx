@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Form, Input, Button, Select, Steps, Space, Typography } from "antd";
 import {
   SendOutlined,
@@ -8,9 +8,9 @@ import {
   ShopOutlined,
 } from "@ant-design/icons";
 import { useRouter } from "next/navigation";
-import { getCities, getBusinessCategories } from "@/lib/constants";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
+import { useCities, useBusinessCategories } from "@/hooks/useRefData";
 
 interface OnboardingFormValues {
   companyName: string;
@@ -24,17 +24,8 @@ interface OnboardingFormValues {
 export default function BusinessOnboardingPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [cities, setCities] = useState<{ key: string; label: string }[]>([]);
-  const [businessCategories, setBusinessCategories] = useState<{ key: string; label: string }[]>([]);
-
-  useEffect(() => {
-    Promise.all([getCities(), getBusinessCategories()])
-      .then(([c, b]) => {
-        setCities(c);
-        setBusinessCategories(b);
-      })
-      .catch(() => {});
-  }, []);
+  const { data: cities = [] } = useCities();
+  const { data: businessCategories = [] } = useBusinessCategories();
 
   const handleSubmit = async (values: OnboardingFormValues) => {
     setLoading(true);

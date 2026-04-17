@@ -1,0 +1,7 @@
+# Zharnamarket Security Policy
+# https://securitytxt.org/
+
+Contact: mailto:security@zharnamarket.kz
+Preferred-Languages: ru, kk, en
+Canonical: https://zharnamarket.kz/.well-known/security.txt
+Expires: 2027-04-16T00:00:00.000Z

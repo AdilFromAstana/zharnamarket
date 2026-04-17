@@ -9,12 +9,8 @@ import {
 } from "@ant-design/icons";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  getCities,
-  getPlatforms,
-  getCategories,
-  STORAGE_KEYS,
-} from "@/lib/constants";
+import { STORAGE_KEYS } from "@/lib/constants";
+import { useCities, usePlatforms, useCategories, useAdFormats } from "@/hooks/useRefData";
 import { toast } from "sonner";
 import PublicLayout from "@/components/layout/PublicLayout";
 import StickyBottomBar from "@/components/ui/StickyBottomBar";
@@ -25,12 +21,6 @@ import StepHeader from "./_components/StepHeader";
 import Step1Basics from "./_components/Step1Basics";
 import Step2Platforms from "./_components/Step2Platforms";
 import Step3Contacts from "./_components/Step3Contacts";
-
-interface AdFormatOption {
-  id: string;
-  key: string;
-  label: string;
-}
 
 const STEP_LABELS = ["Основа", "Платформы", "Контакты и цены"];
 const STEP_TITLES: Record<1 | 2 | 3, string> = {
@@ -123,17 +113,11 @@ export default function CreatorNewPage() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [loading, setLoading] = useState(false);
   const [form] = Form.useForm();
-  const [adFormats, setAdFormats] = useState<AdFormatOption[]>([]);
+  const { data: adFormats = [] } = useAdFormats();
   const [fetchingPlatform, setFetchingPlatform] = useState<string | null>(null);
-  const [cities, setCities] = useState<
-    { key: string; label: string; iconUrl?: string | null }[]
-  >([]);
-  const [platforms, setPlatforms] = useState<
-    { key: string; label: string; iconUrl?: string | null }[]
-  >([]);
-  const [categories, setCategories] = useState<
-    { key: string; label: string; iconUrl?: string | null }[]
-  >([]);
+  const { data: cities = [] } = useCities();
+  const { data: platforms = [] } = usePlatforms();
+  const { data: categories = [] } = useCategories();
 
   const watchedTitle = Form.useWatch("title", form) as string | undefined;
   const watchedCity = Form.useWatch("city", form) as string | undefined;
@@ -153,32 +137,6 @@ export default function CreatorNewPage() {
   const priceItemsCount = (watchedPriceItems ?? []).filter(
     (item) => item?.adFormatLabel && (item?.price ?? 0) > 0,
   ).length;
-
-  useEffect(() => {
-    fetch("/api/ad-formats")
-      .then((r) => r.json())
-      .then((data) => setAdFormats(data.data ?? []))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    const loadReferenceData = async () => {
-      try {
-        const [citiesData, platformsData, categoriesData] = await Promise.all([
-          getCities(),
-          getPlatforms(),
-          getCategories(),
-        ]);
-        setCities(citiesData);
-        setPlatforms(platformsData);
-        setCategories(categoriesData);
-      } catch (error) {
-        console.error("Error loading reference data:", error);
-      }
-    };
-
-    loadReferenceData();
-  }, []);
 
   useEffect(() => {
     try {
@@ -351,8 +309,9 @@ export default function CreatorNewPage() {
 
   return (
     <PublicLayout>
+      <div className="-mt-8 sm:mt-0" />
       <Breadcrumb
-        className="mb-4"
+        className="mb-4 hidden sm:block"
         items={[
           { title: <Link href="/">Главная</Link> },
           { title: <Link href="/cabinet">Кабинет</Link> },

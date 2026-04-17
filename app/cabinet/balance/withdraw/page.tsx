@@ -7,6 +7,7 @@ import { BankOutlined } from "@ant-design/icons";
 import { toast } from "sonner";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { api, ApiError } from "@/lib/api-client";
+import { useInvalidateBalance } from "@/hooks/useBalance";
 import { MIN_WITHDRAWAL_AMOUNT, PLATFORM_COMMISSION_RATE } from "@/lib/constants";
 
 const METHODS = [
@@ -23,6 +24,7 @@ export default function WithdrawPage() {
   const [method, setMethod] = useState("kaspi");
   const [details, setDetails] = useState("");
   const [loading, setLoading] = useState(false);
+  const invalidateBalance = useInvalidateBalance();
 
   const handleWithdraw = async () => {
     if (!amount || amount < MIN_WITHDRAWAL_AMOUNT) {
@@ -36,6 +38,7 @@ export default function WithdrawPage() {
       toast.success("Вывод средств отправлен!", {
         description: "Деньги поступят на ваш счёт в течение нескольких минут.",
       });
+      invalidateBalance();
       router.push("/cabinet/balance");
     } catch (err) {
       if (err instanceof ApiError) {

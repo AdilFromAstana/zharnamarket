@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Drawer, Dropdown, Button } from "antd";
-import { api } from "@/lib/api-client";
-import TopupDrawer from "@/components/balance/TopupDrawer";
 import {
   UserOutlined,
   SettingOutlined,
@@ -33,6 +31,8 @@ import type { MenuProps } from "antd";
 import { cn, getAvatarGradient } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import TopupDrawer from "@/components/balance/TopupDrawer";
+import { useBalance, useInvalidateBalance } from "@/hooks/useBalance";
 
 const NAV_LINKS = [
   { href: "/ads", label: "Задания", icon: <UnorderedListOutlined /> },
@@ -93,15 +93,8 @@ export default function AppHeader() {
   const { user, isLoggedIn, isLoading, isAdmin, logout } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [topupOpen, setTopupOpen] = useState(false);
-  const [walletBalance, setWalletBalance] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!isLoggedIn || isAdmin) return;
-    api
-      .get<{ balance: { current: number } }>("/api/balance")
-      .then((d) => setWalletBalance(d.balance.current))
-      .catch(() => {});
-  }, [isLoggedIn, isAdmin, topupOpen]);
+  const walletBalance = useBalance();
+  const invalidateBalance = useInvalidateBalance();
 
   // Дропдаун «+ Создать» — два действия для авторизованных пользователей
   const createMenuItems: MenuProps["items"] = [
@@ -216,64 +209,73 @@ export default function AppHeader() {
 
               {/* Nav — только desktop */}
               <nav className="hidden md:flex items-center gap-1">
-              {isAdmin
-                ? ADMIN_NAV_LINKS.map((link) => {
-                    const isActive = link.exact
-                      ? pathname === link.href
-                      : pathname?.startsWith(link.href) &&
-                        !(link.href === "/admin" && pathname !== "/admin");
-                    return (
-                      <Link
-                        key={link.href}
-                        href={link.href}
-                        className={cn(
-                          "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
-                          isActive
-                            ? "bg-amber-50 text-amber-700"
-                            : "text-gray-600 hover:text-gray-900 hover:bg-gray-50",
-                        )}
-                      >
-                        {link.label}
-                      </Link>
-                    );
-                  })
-                : NAV_LINKS.map((link) => {
-                    const isActive = pathname?.startsWith(link.href);
-                    return (
-                      <Link
-                        key={link.href}
-                        href={link.href}
-                        className={cn(
-                          "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
-                          isActive
-                            ? "bg-sky-50 text-sky-700"
-                            : "text-gray-600 hover:text-gray-900 hover:bg-gray-50",
-                        )}
-                      >
-                        {link.label}
-                      </Link>
-                    );
-                  })}
+                {isAdmin
+                  ? ADMIN_NAV_LINKS.map((link) => {
+                      const isActive = link.exact
+                        ? pathname === link.href
+                        : pathname?.startsWith(link.href) &&
+                          !(link.href === "/admin" && pathname !== "/admin");
+                      return (
+                        <Link
+                          key={link.href}
+                          href={link.href}
+                          className={cn(
+                            "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                            isActive
+                              ? "bg-amber-50 text-amber-700"
+                              : "text-gray-600 hover:text-gray-900 hover:bg-gray-50",
+                          )}
+                        >
+                          {link.label}
+                        </Link>
+                      );
+                    })
+                  : NAV_LINKS.map((link) => {
+                      const isActive = pathname?.startsWith(link.href);
+                      return (
+                        <Link
+                          key={link.href}
+                          href={link.href}
+                          className={cn(
+                            "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                            isActive
+                              ? "bg-sky-50 text-sky-700"
+                              : "text-gray-600 hover:text-gray-900 hover:bg-gray-50",
+                          )}
+                        >
+                          {link.label}
+                        </Link>
+                      );
+                    })}
               </nav>
             </div>
 
             {/* Правая часть */}
             <div className="flex items-center gap-2">
-              {/* Кошелёк-пилюля — desktop, только для авторизованных не-админов */}
+              {/* Кошелёк-пилюля + быстрое пополнение — desktop */}
               {!isLoading && isLoggedIn && !isAdmin && (
-                <Link
-                  href="/cabinet/balance"
-                  className="hidden md:flex items-center h-9 rounded-full border border-gray-200 bg-gray-50 px-3 gap-1.5 text-sm font-semibold text-gray-900 hover:text-emerald-600 hover:border-gray-300 transition-colors"
-                  title="Кошелёк"
-                >
-                  <WalletOutlined style={{ color: "#10b981" }} />
-                  <span>
-                    {walletBalance === null
-                      ? "—"
-                      : walletBalance.toLocaleString("ru")}
-                  </span>
-                  <span className="text-xs font-normal text-gray-400">₸</span>
-                </Link>
+                <div className="hidden md:flex items-center gap-1">
+                  <Link
+                    href="/cabinet/balance"
+                    className="flex items-center h-9 rounded-full border border-gray-200 bg-gray-50 px-3 gap-1.5 text-sm font-semibold text-gray-900 hover:text-emerald-600 hover:border-gray-300 transition-colors"
+                    title="Кошелёк"
+                  >
+                    <WalletOutlined style={{ color: "#10b981" }} />
+                    <span>
+                      {walletBalance === null
+                        ? "—"
+                        : walletBalance.toLocaleString("ru")}
+                    </span>
+                    <span className="text-xs font-normal text-gray-400">₸</span>
+                  </Link>
+                  <button
+                    onClick={() => setTopupOpen(true)}
+                    className="w-9 h-9 rounded-full border border-gray-200 bg-gray-50 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-600 flex items-center justify-center text-gray-500 transition-colors"
+                    title="Пополнить"
+                  >
+                    <PlusOutlined className="text-xs" />
+                  </button>
+                </div>
               )}
 
               {/* Кнопка «+ Создать» с дропдауном — desktop (скрыта для админа, гостей и на страницах создания) */}
@@ -281,21 +283,21 @@ export default function AppHeader() {
                 isLoggedIn &&
                 !pathname?.startsWith("/ads/new") &&
                 !pathname?.startsWith("/creators/new") && (
-                <Dropdown
-                  menu={{ items: createMenuItems }}
-                  trigger={["click"]}
-                  placement="bottomRight"
-                  className="hidden md:block"
-                >
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    className="!bg-gradient-to-br !from-sky-500 !to-blue-600 !border-0 !shadow-md hidden md:inline-flex"
+                  <Dropdown
+                    menu={{ items: createMenuItems }}
+                    trigger={["click"]}
+                    placement="bottomRight"
+                    className="hidden md:block"
                   >
-                    Создать
-                  </Button>
-                </Dropdown>
-              )}
+                    <Button
+                      type="primary"
+                      icon={<PlusOutlined />}
+                      className="!bg-gradient-to-br !from-sky-500 !to-blue-600 !border-0 !shadow-md hidden md:inline-flex"
+                    >
+                      Создать
+                    </Button>
+                  </Dropdown>
+                )}
 
               {/* Аккаунт — авторизованный (desktop) */}
               {!isLoading && isLoggedIn && (
@@ -351,6 +353,15 @@ export default function AppHeader() {
           </div>
         </div>
       </header>
+
+      {/* Topup Modal/Drawer — opens from header */}
+      <TopupDrawer
+        open={topupOpen}
+        onClose={() => {
+          setTopupOpen(false);
+          invalidateBalance();
+        }}
+      />
 
       {/* Mobile Drawer */}
       <Drawer
@@ -518,13 +529,11 @@ export default function AppHeader() {
                 </Link>
               )}
 
-              {/* Быстрое пополнение — мобильный пункт */}
               {isLoggedIn && (
                 <button
-                  type="button"
                   onClick={() => {
                     setDrawerOpen(false);
-                    setTopupOpen(true);
+                    setTimeout(() => setTopupOpen(true), 300);
                   }}
                   className="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-emerald-700 hover:bg-emerald-50 transition-colors text-left"
                 >
@@ -534,7 +543,6 @@ export default function AppHeader() {
                   Пополнить кошелёк
                 </button>
               )}
-
             </nav>
 
             {/* CTA — создать */}
@@ -615,8 +623,6 @@ export default function AppHeader() {
           </>
         )}
       </Drawer>
-
-      <TopupDrawer open={topupOpen} onClose={() => setTopupOpen(false)} />
     </>
   );
 }

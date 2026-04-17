@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Drawer } from "antd";
-import { WalletOutlined } from "@ant-design/icons";
+import { Drawer, Modal } from "antd";
+import { WalletOutlined, CloseOutlined } from "@ant-design/icons";
 import TopupForm from "./TopupForm";
 
 interface TopupDrawerProps {
@@ -25,23 +25,43 @@ export default function TopupDrawer({
     return () => window.removeEventListener("resize", check);
   }, []);
 
+  const title = (
+    <div className="flex items-center gap-2">
+      <WalletOutlined style={{ color: "#10b981" }} />
+      <span className="font-semibold">Пополнить кошелёк</span>
+    </div>
+  );
+
+  // Mobile — bottom drawer
+  if (isMobile) {
+    return (
+      <Drawer
+        open={open}
+        onClose={onClose}
+        placement="bottom"
+        styles={{ wrapper: { height: "85vh", borderRadius: "16px 16px 0 0" } }}
+        title={title}
+        className="topup-drawer-mobile"
+        destroyOnHidden
+      >
+        <TopupForm initialAmount={initialAmount} onSuccess={onClose} />
+      </Drawer>
+    );
+  }
+
+  // Desktop — centered modal
   return (
-    <Drawer
+    <Modal
       open={open}
-      onClose={onClose}
-      placement={isMobile ? "bottom" : "right"}
-      size={isMobile ? "large" : "default"}
-      styles={isMobile ? { wrapper: { height: "92vh" } } : undefined}
-      title={
-        <div className="flex items-center gap-2">
-          <WalletOutlined style={{ color: "#10b981" }} />
-          <span className="font-semibold">Пополнить кошелёк</span>
-        </div>
-      }
-      className={isMobile ? "topup-drawer-mobile" : undefined}
-      destroyOnClose
+      onCancel={onClose}
+      footer={null}
+      width={480}
+      centered
+      title={title}
+      closeIcon={<CloseOutlined className="text-gray-400" />}
+      destroyOnHidden
     >
       <TopupForm initialAmount={initialAmount} onSuccess={onClose} />
-    </Drawer>
+    </Modal>
   );
 }

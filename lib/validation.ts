@@ -3,17 +3,38 @@
  * Используется в create/update handlers для tasks, creators, users.
  */
 
+import { Platform } from "@prisma/client";
+
 // ─── Допустимые значения enum (из prisma/schema.prisma) ───────────────────
 
-export const VALID_PLATFORMS = new Set(["TikTok", "Instagram", "YouTube"]);
+export const VALID_PLATFORMS: Set<string> = new Set(Object.values(Platform));
 
 // NOTE: VALID_CATEGORIES and VALID_CITIES removed - now validated against database
 
-export const VALID_BUDGET_TYPES = new Set(["fixed", "per_views", "revenue", "negotiable"]);
+export const VALID_BUDGET_TYPES = new Set([
+  "fixed",
+  "per_views",
+  "revenue",
+  "negotiable",
+]);
 
-export const VALID_AVAILABILITY = new Set(["available", "busy", "partially_available"]);
+export const VALID_AVAILABILITY = new Set([
+  "available",
+  "busy",
+  "partially_available",
+]);
 
-export const VALID_AD_STATUSES = new Set(["active", "paused", "expired", "archived", "draft", "pending_payment", "deleted", "budget_exhausted", "cancelled"]);
+export const VALID_AD_STATUSES = new Set([
+  "active",
+  "paused",
+  "expired",
+  "archived",
+  "draft",
+  "pending_payment",
+  "deleted",
+  "budget_exhausted",
+  "cancelled",
+]);
 
 export const VALID_PAYMENT_METHODS = new Set(["kaspi", "halyk", "card"]);
 
@@ -98,29 +119,48 @@ export function checkLength(
 export function validateCategoryKey(key: string): string | null {
   if (!key || typeof key !== "string") return "Ключ обязателен";
   if (key.length < 2 || key.length > 50) return "Ключ: от 2 до 50 символов";
-  if (!/^[A-Za-z][A-Za-z0-9]*$/.test(key)) return "Ключ: только латиница и цифры, начинается с буквы";
+  if (!/^[A-Za-z][A-Za-z0-9]*$/.test(key))
+    return "Ключ: только латиница и цифры, начинается с буквы";
   return null;
 }
 
 /** Проверяет label справочника: 2-100 символов */
 export function validateCategoryLabel(label: string): string | null {
-  if (!label || typeof label !== "string" || !label.trim()) return "Название обязательно";
-  if (label.trim().length < 2 || label.trim().length > 100) return "Название: от 2 до 100 символов";
+  if (!label || typeof label !== "string" || !label.trim())
+    return "Название обязательно";
+  if (label.trim().length < 2 || label.trim().length > 100)
+    return "Название: от 2 до 100 символов";
   return null;
 }
 
 // ─── Валидация объявления (Ad) ────────────────────────────────────────────
 
 export function validateAdFields(body: Record<string, unknown>): string | null {
-  const { title, platform, city, category, budgetType, description, budgetFrom, budgetTo, budgetDetails } = body;
+  const {
+    title,
+    platform,
+    city,
+    category,
+    budgetType,
+    description,
+    budgetFrom,
+    budgetTo,
+    budgetDetails,
+  } = body;
 
   // Обязательные поля
-  if (!title || typeof title !== "string" || !title.trim()) return "Название обязательно";
-  const titleErr = checkLength(String(title).trim(), "Название", LIMITS.title.min, LIMITS.title.max);
+  if (!title || typeof title !== "string" || !title.trim())
+    return "Название обязательно";
+  const titleErr = checkLength(
+    String(title).trim(),
+    "Название",
+    LIMITS.title.min,
+    LIMITS.title.max,
+  );
   if (titleErr) return titleErr;
 
   if (!platform || !isValidEnum(String(platform), VALID_PLATFORMS)) {
-    return "Недопустимая платформа. Допустимые: TikTok, Instagram, YouTube";
+    return `Недопустимая платформа. Допустимые: ${[...VALID_PLATFORMS].join(", ")}`;
   }
   if (!city) return "Город обязателен";
   // city может быть русским (маппится через toDbCity) или enum-ключом
@@ -129,8 +169,14 @@ export function validateAdFields(body: Record<string, unknown>): string | null {
   if (!category) return "Категория обязательна";
   // category аналогично маппится
 
-  if (!description || typeof description !== "string" || !description.trim()) return "Описание обязательно";
-  const descErr = checkLength(String(description).trim(), "Описание", LIMITS.description.min, LIMITS.description.max);
+  if (!description || typeof description !== "string" || !description.trim())
+    return "Описание обязательно";
+  const descErr = checkLength(
+    String(description).trim(),
+    "Описание",
+    LIMITS.description.min,
+    LIMITS.description.max,
+  );
   if (descErr) return descErr;
 
   if (!budgetType || !isValidEnum(String(budgetType), VALID_BUDGET_TYPES)) {
@@ -149,7 +195,12 @@ export function validateAdFields(body: Record<string, unknown>): string | null {
     }
   }
   if (budgetDetails !== undefined && budgetDetails !== null) {
-    const bdErr = checkLength(String(budgetDetails), "Детали бюджета", 0, LIMITS.budgetDetails.max);
+    const bdErr = checkLength(
+      String(budgetDetails),
+      "Детали бюджета",
+      0,
+      LIMITS.budgetDetails.max,
+    );
     if (bdErr) return bdErr;
   }
 
@@ -158,29 +209,54 @@ export function validateAdFields(body: Record<string, unknown>): string | null {
 
 // ─── Валидация PATCH полей объявления ─────────────────────────────────────
 
-export function validateAdPatchField(field: string, value: unknown): string | null {
+export function validateAdPatchField(
+  field: string,
+  value: unknown,
+): string | null {
   switch (field) {
     case "title":
-      if (typeof value !== "string" || !value.trim()) return "Название не может быть пустым";
-      return checkLength(value.trim(), "Название", LIMITS.title.min, LIMITS.title.max);
+      if (typeof value !== "string" || !value.trim())
+        return "Название не может быть пустым";
+      return checkLength(
+        value.trim(),
+        "Название",
+        LIMITS.title.min,
+        LIMITS.title.max,
+      );
     case "description":
-      if (typeof value !== "string" || !value.trim()) return "Описание не может быть пустым";
-      return checkLength(value.trim(), "Описание", LIMITS.description.min, LIMITS.description.max);
+      if (typeof value !== "string" || !value.trim())
+        return "Описание не может быть пустым";
+      return checkLength(
+        value.trim(),
+        "Описание",
+        LIMITS.description.min,
+        LIMITS.description.max,
+      );
     case "platform":
-      if (!isValidEnum(String(value), VALID_PLATFORMS)) return "Недопустимая платформа";
+      if (!isValidEnum(String(value), VALID_PLATFORMS))
+        return "Недопустимая платформа";
       break;
     case "budgetType":
-      if (!isValidEnum(String(value), VALID_BUDGET_TYPES)) return "Недопустимый тип бюджета";
+      if (!isValidEnum(String(value), VALID_BUDGET_TYPES))
+        return "Недопустимый тип бюджета";
       break;
     case "budgetFrom":
     case "budgetTo":
-      if (value !== null && (typeof value !== "number" || isNaN(value) || value < 0)) {
+      if (
+        value !== null &&
+        (typeof value !== "number" || isNaN(value) || value < 0)
+      ) {
         return `${field} должен быть положительным числом`;
       }
       break;
     case "budgetDetails":
       if (value !== null && typeof value === "string") {
-        return checkLength(value, "Детали бюджета", 0, LIMITS.budgetDetails.max);
+        return checkLength(
+          value,
+          "Детали бюджета",
+          0,
+          LIMITS.budgetDetails.max,
+        );
       }
       break;
     case "images":
@@ -194,11 +270,18 @@ export function validateAdPatchField(field: string, value: unknown): string | nu
 
 // ─── Валидация контактов ──────────────────────────────────────────────────
 
-export function validateContacts(contacts: Record<string, unknown> | undefined): string | null {
+export function validateContacts(
+  contacts: Record<string, unknown> | undefined,
+): string | null {
   if (!contacts) return null;
   for (const [key, value] of Object.entries(contacts)) {
     if (value !== null && value !== undefined && typeof value === "string") {
-      const err = checkLength(value, `Контакт (${key})`, 0, LIMITS.contactField.max);
+      const err = checkLength(
+        value,
+        `Контакт (${key})`,
+        0,
+        LIMITS.contactField.max,
+      );
       if (err) return err;
     }
   }

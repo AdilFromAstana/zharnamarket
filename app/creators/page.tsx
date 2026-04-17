@@ -1,5 +1,6 @@
 import PublicLayout from "@/components/layout/PublicLayout";
 import CreatorsListClient from "./CreatorsListClient";
+import JsonLd, { breadcrumbSchema, itemListSchema } from "@/components/seo/JsonLd";
 
 export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
@@ -16,6 +17,7 @@ import { COOKIE_NAMES } from "@/lib/cookies";
 import { distributeBoostedByTier, countBoostedBeforePage } from "@/lib/interleave-boosts";
 import { mapCreatorFromApi } from "@/lib/mappers/creator";
 import type { CreatorProfile, CreatorFacets, CreatorFilters } from "@/lib/types/creator";
+import type { Metadata } from "next";
 
 // Получаем валидные категории и города из базы
 async function getValidReferenceData() {
@@ -36,23 +38,41 @@ async function getValidReferenceData() {
   };
 }
 
-export const metadata = {
-  title: "Каталог креаторов — Zharnamarket",
-  description:
-    "Найди TikTok, Instagram и YouTube блогеров в Казахстане. Прямой контакт без посредников.",
-  openGraph: {
-    title: "Каталог креаторов — Zharnamarket",
-    description:
-      "Найди TikTok, Instagram и YouTube блогеров в Казахстане. Прямой контакт без посредников.",
-    type: "website",
-  },
-};
-
-const PAGE_SIZE = 20;
-
 interface Props {
   searchParams: Promise<Record<string, string | undefined>>;
 }
+
+export async function generateMetadata({
+  searchParams,
+}: Props): Promise<Metadata> {
+  const params = await searchParams;
+  const page = Math.max(1, safeInt(params.page ?? null, 1));
+  const suffix = page > 1 ? ` — Страница ${page}` : "";
+
+  const canonicalParams = new URLSearchParams();
+  if (params.city) canonicalParams.set("city", params.city);
+  if (params.platform) canonicalParams.set("platform", params.platform);
+  if (params.category) canonicalParams.set("category", params.category);
+  if (params.sortBy) canonicalParams.set("sortBy", params.sortBy);
+  if (page > 1) canonicalParams.set("page", String(page));
+  const qs = canonicalParams.toString();
+  const canonical = qs
+    ? `https://zharnamarket.kz/creators?${qs}`
+    : "https://zharnamarket.kz/creators";
+
+  return {
+    title: `Каталог авторов видеоконтента${suffix} — Zharnamarket`,
+    description: `Найди авторов видеорекламы в Казахстане: вирусные ролики, обзоры, сторителлинг, продакт-плейсмент, TikTok, Instagram, YouTube. Прямой контакт без посредников.${suffix}`,
+    openGraph: {
+      title: `Каталог авторов видеоконтента${suffix} — Zharnamarket`,
+      description: `Найди авторов видеорекламы в Казахстане: вирусные ролики, обзоры, сторителлинг, продакт-плейсмент. Прямой контакт без посредников.${suffix}`,
+      type: "website",
+    },
+    alternates: { canonical },
+  };
+}
+
+const PAGE_SIZE = 20;
 
 /** Split comma-separated query param into a trimmed array */
 function parseCSV(val: string | undefined): string[] {
@@ -322,6 +342,22 @@ export default async function CreatorsPage({ searchParams }: Props) {
 
   return (
     <PublicLayout>
+      <JsonLd
+        data={[
+          breadcrumbSchema([
+            { name: "Главная", url: "https://zharnamarket.kz" },
+            { name: "Каталог креаторов", url: "https://zharnamarket.kz/creators" },
+          ]),
+          itemListSchema(
+            "Каталог авторов видеоконтента — Zharnamarket",
+            creators.slice(0, 10).map((c, i) => ({
+              url: `https://zharnamarket.kz/creators/${c.id}`,
+              name: c.fullName,
+              position: i + 1,
+            })),
+          ),
+        ]}
+      />
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
           Каталог креаторов

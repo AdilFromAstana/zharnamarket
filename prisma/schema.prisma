@@ -326,6 +326,11 @@ model User {
   blockedAt DateTime?
   isDeleted Boolean   @default(false)
 
+  // Pending email change
+  pendingEmail        String?
+  pendingEmailCode    String?   // SHA-256 hash of 6-digit code
+  pendingEmailExpires DateTime?
+
   // Password reset
   passwordResetToken   String?   @unique
   passwordResetExpires DateTime?
