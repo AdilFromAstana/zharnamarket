@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserId, unauthorized, badRequest, serverError } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getPaymentProvider } from "@/lib/payment-client";
-import { VALID_PAYMENT_METHODS } from "@/lib/validation";
+import {
+  getProviderForMethod,
+  type PaymentMethodId,
+} from "@/lib/payment-providers";
+import { paymentLimiter, rateLimitGuard } from "@/lib/rate-limit";
 
 /**
  * POST /api/payments/ads/[id]/escrow — Оплата/пополнение эскроу-задания.
@@ -16,13 +19,19 @@ export async function POST(
     const userId = await getCurrentUserId(req);
     if (!userId) return unauthorized();
 
+    const limited = rateLimitGuard(paymentLimiter, `payment:${userId}`, 600);
+    if (limited) return limited;
+
     const { id: adId } = await params;
     const body = await req.json();
     const { method } = body;
 
     const isWallet = method === "wallet";
-    if (!isWallet && !VALID_PAYMENT_METHODS.has(method)) {
-      return badRequest("Выберите способ оплаты: kaspi, halyk, card или wallet");
+    const providerEntry = isWallet
+      ? null
+      : getProviderForMethod(method as PaymentMethodId);
+    if (!isWallet && !providerEntry) {
+      return badRequest("Способ оплаты недоступен");
     }
 
     // Проверяем задание
@@ -167,19 +176,21 @@ export async function POST(
         userId,
         type: paymentType as "escrow_deposit" | "escrow_topup",
         amount,
-        method: method as "kaspi" | "halyk" | "card",
+        method: method as PaymentMethodId,
         status: "pending",
         adId,
       },
     });
 
     // Инициируем платёж
-    const provider = getPaymentProvider();
-    const result = await provider.initPayment({
+    if (!providerEntry) {
+      return badRequest("Способ оплаты недоступен");
+    }
+    const result = await providerEntry.provider.initPayment({
       amount,
       description: `Эскроу: ${ad.title}`,
       orderId: session.id,
-      method: method as "kaspi" | "halyk" | "card",
+      method: method as PaymentMethodId,
       userEmail: user?.email ?? "",
       userPhone: user?.phone ?? undefined,
     });

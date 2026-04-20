@@ -1,9 +1,10 @@
-import { Form, Input, InputNumber, Space } from "antd";
+import { Form, Input, InputNumber } from "antd";
 import { CheckOutlined, TeamOutlined, LockOutlined } from "@ant-design/icons";
 import type { FormInstance } from "antd";
 import type { BudgetType } from "@/lib/types/ad";
 import type { FormValues, PaymentMode } from "../_types";
 import { BUDGET_TYPE_OPTIONS } from "../_constants";
+import { SHOW_PLATFORM_ESCROW } from "@/lib/constants";
 
 type Step2FormProps = {
   form: FormInstance<FormValues>;
@@ -76,9 +77,11 @@ export default function Step2Form({
       {/* Подсказка и поля для выбранного типа */}
       {budgetType && (
         <div className="mb-4">
-          <div className="p-3 bg-gray-50 rounded-lg text-xs text-gray-500 mb-3">
-            {BUDGET_TYPE_OPTIONS.find((o) => o.value === budgetType)?.hint}
-          </div>
+          {BUDGET_TYPE_OPTIONS.find((o) => o.value === budgetType)?.hint && (
+            <div className="p-3 bg-gray-50 rounded-lg text-xs text-gray-500 mb-3">
+              {BUDGET_TYPE_OPTIONS.find((o) => o.value === budgetType)?.hint}
+            </div>
+          )}
 
           {/* Фиксированная сумма → два числовых поля */}
           {budgetType === "fixed" && (
@@ -122,76 +125,80 @@ export default function Step2Form({
           {/* За просмотры → выбор: сам / через платформу */}
           {budgetType === "per_views" && (
             <div className="space-y-3">
-              <div className="text-sm font-medium text-gray-700 mb-1">
-                Как хотите оплачивать?
-              </div>
-              <div className="space-y-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPaymentMode("direct");
-                    form.setFieldValue("paymentMode", "direct");
-                    saveDraft({ paymentMode: "direct" });
-                  }}
-                  className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all cursor-pointer ${
-                    paymentMode === "direct"
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-gray-200 bg-white hover:border-gray-300"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <TeamOutlined
-                      className={`text-lg ${paymentMode === "direct" ? "text-blue-600" : "text-gray-400"}`}
-                    />
-                    <div className="flex-1">
-                      <div
-                        className={`text-sm font-medium ${paymentMode === "direct" ? "text-blue-700" : "text-gray-700"}`}
-                      >
-                        Договорюсь с креатором сам
-                      </div>
-                      <div className="text-xs text-gray-400 mt-0.5">
-                        Укажете бюджет текстом, связь напрямую
-                      </div>
-                    </div>
-                    {paymentMode === "direct" && (
-                      <CheckOutlined className="text-blue-600 shrink-0" />
-                    )}
+              {SHOW_PLATFORM_ESCROW && (
+                <>
+                  <div className="text-sm font-medium text-gray-700 mb-1">
+                    Как хотите оплачивать?
                   </div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPaymentMode("escrow");
-                    form.setFieldValue("paymentMode", "escrow");
-                    saveDraft({ paymentMode: "escrow" });
-                  }}
-                  className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all cursor-pointer ${
-                    paymentMode === "escrow"
-                      ? "border-green-500 bg-green-50"
-                      : "border-gray-200 bg-white hover:border-gray-300"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <LockOutlined
-                      className={`text-lg ${paymentMode === "escrow" ? "text-green-600" : "text-gray-400"}`}
-                    />
-                    <div className="flex-1">
-                      <div
-                        className={`text-sm font-medium ${paymentMode === "escrow" ? "text-green-700" : "text-gray-700"}`}
-                      >
-                        Через платформу (гарантия оплаты)
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPaymentMode("direct");
+                        form.setFieldValue("paymentMode", "direct");
+                        saveDraft({ paymentMode: "direct" });
+                      }}
+                      className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all cursor-pointer ${
+                        paymentMode === "direct"
+                          ? "border-blue-500 bg-blue-50"
+                          : "border-gray-200 bg-white hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <TeamOutlined
+                          className={`text-lg ${paymentMode === "direct" ? "text-blue-600" : "text-gray-400"}`}
+                        />
+                        <div className="flex-1">
+                          <div
+                            className={`text-sm font-medium ${paymentMode === "direct" ? "text-blue-700" : "text-gray-700"}`}
+                          >
+                            Договорюсь с креатором сам
+                          </div>
+                          <div className="text-xs text-gray-400 mt-0.5">
+                            Укажете бюджет текстом, связь напрямую
+                          </div>
+                        </div>
+                        {paymentMode === "direct" && (
+                          <CheckOutlined className="text-blue-600 shrink-0" />
+                        )}
                       </div>
-                      <div className="text-xs text-gray-400 mt-0.5">
-                        Деньги замораживаются, креатор получает выплату
-                        автоматически
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPaymentMode("escrow");
+                        form.setFieldValue("paymentMode", "escrow");
+                        saveDraft({ paymentMode: "escrow" });
+                      }}
+                      className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all cursor-pointer ${
+                        paymentMode === "escrow"
+                          ? "border-green-500 bg-green-50"
+                          : "border-gray-200 bg-white hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <LockOutlined
+                          className={`text-lg ${paymentMode === "escrow" ? "text-green-600" : "text-gray-400"}`}
+                        />
+                        <div className="flex-1">
+                          <div
+                            className={`text-sm font-medium ${paymentMode === "escrow" ? "text-green-700" : "text-gray-700"}`}
+                          >
+                            Через платформу (гарантия оплаты)
+                          </div>
+                          <div className="text-xs text-gray-400 mt-0.5">
+                            Деньги замораживаются, креатор получает выплату
+                            автоматически
+                          </div>
+                        </div>
+                        {paymentMode === "escrow" && (
+                          <CheckOutlined className="text-green-600 shrink-0" />
+                        )}
                       </div>
-                    </div>
-                    {paymentMode === "escrow" && (
-                      <CheckOutlined className="text-green-600 shrink-0" />
-                    )}
+                    </button>
                   </div>
-                </button>
-              </div>
+                </>
+              )}
 
               {/* Direct mode: текстовое описание */}
               {paymentMode === "direct" && (
@@ -380,20 +387,18 @@ export default function Step2Form({
             label="Telegram"
             name="telegram"
             rules={[{ required: true, message: "Telegram обязателен" }]}
+            extra={
+              <span className="text-xs text-gray-400">
+                Только username, без @
+              </span>
+            }
           >
-            <Space.Compact style={{ width: "100%" }}>
-              <Input
-                defaultValue="@"
-                readOnly
-                style={{
-                  width: 40,
-                  flexShrink: 0,
-                  textAlign: "center",
-                  padding: "0 8px",
-                }}
-              />
-              <Input placeholder="username" style={{ flex: 1 }} />
-            </Space.Compact>
+            <Input
+              prefix={
+                <span className="text-gray-400 select-none pr-1">@</span>
+              }
+              placeholder="username"
+            />
           </Form.Item>
 
           <Form.Item label="WhatsApp" name="whatsapp">

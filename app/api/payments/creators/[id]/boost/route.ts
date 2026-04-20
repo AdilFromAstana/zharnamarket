@@ -10,7 +10,13 @@ import {
 import { prisma } from "@/lib/prisma";
 import { CREATOR_BOOST_OPTIONS } from "@/lib/constants";
 import { validatePromoCode, applyPromoCode } from "@/lib/promo";
-import { getPaymentProvider, isPaymentMock } from "@/lib/payment-client";
+import {
+  getProviderForMethod,
+  type PaymentMethodId,
+} from "@/lib/payment-providers";
+import { paymentLimiter, rateLimitGuard } from "@/lib/rate-limit";
+import { RAISE_PRIORITY, computeProRatedDiscount } from "@/lib/boost";
+import { BOOST_LABELS } from "@/lib/constants";
 import type { BoostType } from "@prisma/client";
 
 // POST /api/payments/creators/[id]/boost — оплатить буст профиля креатора
@@ -21,6 +27,9 @@ export async function POST(
   try {
     const userId = await getCurrentUserId(req);
     if (!userId) return unauthorized();
+
+    const limited = rateLimitGuard(paymentLimiter, `payment:${userId}`, 600);
+    if (limited) return limited;
 
     const { id: profileId } = await params;
     const body = await req.json();
@@ -38,8 +47,11 @@ export async function POST(
     if (!method) return badRequest("Способ оплаты обязателен");
 
     const isWallet = method === "wallet";
-    if (!isWallet && !["kaspi", "halyk", "card"].includes(method)) {
-      return badRequest("Способ оплаты: kaspi, halyk, card или wallet");
+    const providerEntry = isWallet
+      ? null
+      : getProviderForMethod(method as PaymentMethodId);
+    if (!isWallet && !providerEntry) {
+      return badRequest("Способ оплаты недоступен");
     }
 
     const boostOption = CREATOR_BOOST_OPTIONS.find((b) => b.id === boostType);
@@ -53,6 +65,44 @@ export async function POST(
     if (!profile.isPublished) {
       return badRequest("Профиль должен быть опубликован для продвижения");
     }
+
+    // Активные бусты: same-tier разрешаем (renewal), higher-tier блокирует
+    const newBoostPriority = RAISE_PRIORITY[boostType as BoostType];
+    const activeBoosts = await prisma.creatorBoost.findMany({
+      where: {
+        creatorProfileId: profileId,
+        expiresAt: { gte: new Date() },
+      },
+      select: { id: true, boostType: true, expiresAt: true },
+    });
+    const blockingBoost = activeBoosts.find(
+      (b) => RAISE_PRIORITY[b.boostType] > newBoostPriority,
+    );
+    if (blockingBoost) {
+      return NextResponse.json(
+        {
+          error: `У профиля уже активен более высокий буст «${BOOST_LABELS[blockingBoost.boostType]}». Тариф ниже недоступен до окончания.`,
+          reason: "active_higher_boost_exists",
+          activeBoost: {
+            boostType: blockingBoost.boostType,
+            expiresAt: blockingBoost.expiresAt.toISOString(),
+          },
+        },
+        { status: 409 },
+      );
+    }
+
+    // Same-tier = продление: добавляем days к существующему expiresAt
+    const sameTierBoost = activeBoosts.find(
+      (b) => b.boostType === boostType,
+    );
+
+    // Апгрейд: активный младший тир → будет заменён новым, остаток идёт в скидку
+    const lowerTierBoost = activeBoosts.find(
+      (b) =>
+        b.boostType !== boostType &&
+        RAISE_PRIORITY[b.boostType] < newBoostPriority,
+    );
 
     // Валидация промокода (если передан)
     let promoValidation: Awaited<ReturnType<typeof validatePromoCode>> | null =
@@ -71,21 +121,31 @@ export async function POST(
       }
     }
 
+    const now = new Date();
+    const daysMs = boostOption.days * 24 * 60 * 60 * 1000;
+
+    // Pro-rated скидка за остаток младшего тира при апгрейде
+    const proRatedDiscount = computeProRatedDiscount(
+      lowerTierBoost,
+      boostOption,
+      CREATOR_BOOST_OPTIONS,
+      now,
+    );
+
     const originalAmount = boostOption.price;
-    const discountAmount = promoValidation?.valid
+    const promoDiscount = promoValidation?.valid
       ? promoValidation.discountAmount
       : 0;
-    const finalAmount = promoValidation?.valid
-      ? promoValidation.finalAmount
-      : originalAmount;
+    const discountAmount = promoDiscount + proRatedDiscount;
+    const finalAmount = Math.max(0, originalAmount - discountAmount);
 
     // Если скидка 100% — пропускаем платёжный шаг, сразу активируем
     const isFree = finalAmount === 0;
 
-    const now = new Date();
-    const expiresAt = new Date(
-      now.getTime() + boostOption.days * 24 * 60 * 60 * 1000,
-    );
+    // Для продления (same-tier) — продлеваем от существующего конца, чтобы не терять оставшееся время
+    const expiresAt = sameTierBoost
+      ? new Date(sameTierBoost.expiresAt.getTime() + daysMs)
+      : new Date(now.getTime() + daysMs);
 
     // ── Ветка: оплата из кошелька ──────────────────────────────
     if (isWallet && !isFree) {
@@ -155,14 +215,27 @@ export async function POST(
             );
           }
 
-          await tx.creatorBoost.create({
-            data: {
-              creatorProfileId: profileId,
-              boostType: boostType as BoostType,
-              activatedAt: now,
-              expiresAt,
-            },
-          });
+          if (sameTierBoost) {
+            await tx.creatorBoost.update({
+              where: { id: sameTierBoost.id },
+              data: { expiresAt },
+            });
+          } else {
+            if (lowerTierBoost) {
+              await tx.creatorBoost.update({
+                where: { id: lowerTierBoost.id },
+                data: { expiresAt: now },
+              });
+            }
+            await tx.creatorBoost.create({
+              data: {
+                creatorProfileId: profileId,
+                boostType: boostType as BoostType,
+                activatedAt: now,
+                expiresAt,
+              },
+            });
+          }
 
           await tx.creatorProfile.update({
             where: { id: profileId },
@@ -181,9 +254,12 @@ export async function POST(
         expiresAt: expiresAt.toISOString(),
         originalAmount,
         discountAmount,
+        proRatedDiscount,
         finalAmount,
         isFree: false,
         fromWallet: true,
+        renewed: !!sameTierBoost,
+        upgraded: !!lowerTierBoost,
         promoApplied: !!promoValidation?.valid,
       });
     }
@@ -197,7 +273,7 @@ export async function POST(
           creatorProfileId: profileId,
           type: "creator_boost",
           amount: finalAmount,
-          method: method as "kaspi" | "halyk" | "card",
+          method: method as PaymentMethodId,
           status: isFree ? "success" : "pending",
           boostType: boostType as "rise" | "vip" | "premium",
         };
@@ -225,14 +301,27 @@ export async function POST(
         }
 
         if (isFree) {
-          await tx.creatorBoost.create({
-            data: {
-              creatorProfileId: profileId,
-              boostType: boostType as BoostType,
-              activatedAt: now,
-              expiresAt,
-            },
-          });
+          if (sameTierBoost) {
+            await tx.creatorBoost.update({
+              where: { id: sameTierBoost.id },
+              data: { expiresAt },
+            });
+          } else {
+            if (lowerTierBoost) {
+              await tx.creatorBoost.update({
+                where: { id: lowerTierBoost.id },
+                data: { expiresAt: now },
+              });
+            }
+            await tx.creatorBoost.create({
+              data: {
+                creatorProfileId: profileId,
+                boostType: boostType as BoostType,
+                activatedAt: now,
+                expiresAt,
+              },
+            });
+          }
 
           await tx.creatorProfile.update({
             where: { id: profileId },
@@ -254,25 +343,29 @@ export async function POST(
         expiresAt: expiresAt.toISOString(),
         originalAmount,
         discountAmount,
+        proRatedDiscount,
         finalAmount,
         isFree: true,
+        renewed: !!sameTierBoost,
+        upgraded: !!lowerTierBoost,
         promoApplied: !!promoValidation?.valid,
       });
     }
 
-    // Инициируем платёж через провайдера
-    const provider = getPaymentProvider();
+    if (!providerEntry) {
+      return badRequest("Способ оплаты недоступен");
+    }
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { email: true, phone: true },
     });
 
     const boostLabel = boostOption.name;
-    const { paymentUrl, externalId } = await provider.initPayment({
+    const { paymentUrl, externalId } = await providerEntry.provider.initPayment({
       amount: finalAmount,
       description: `Буст «${boostLabel}» для профиля`,
       orderId: result.id,
-      method: method as "kaspi" | "halyk" | "card",
+      method: method as PaymentMethodId,
       userEmail: user?.email ?? "",
       userPhone: user?.phone ?? undefined,
     });
@@ -287,12 +380,14 @@ export async function POST(
       paymentId: result.id,
       paymentUrl,
       status: "pending",
-      isMock: isPaymentMock(),
+      isMock: providerEntry.providerId === "mock",
       boostType,
       originalAmount,
       discountAmount,
+      proRatedDiscount,
       finalAmount,
       isFree: false,
+      upgraded: !!lowerTierBoost,
       promoApplied: !!promoValidation?.valid,
     });
   } catch (err) {

@@ -14,6 +14,7 @@ import {
   isAuthenticated,
   api,
 } from "@/lib/api-client";
+import { identify, reset } from "@/lib/analytics";
 
 // ─── Типы ────────────────────────────────────────────────────────────────────
 
@@ -26,6 +27,8 @@ export interface AuthUser {
   avatarColor?: string | null;
   role: "user" | "admin";
   emailVerified?: boolean;
+  telegramId?: string | null;
+  telegramUsername?: string | null;
 }
 
 interface AuthContextValue {
@@ -69,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const freshUser = await api.get<AuthUser>("/api/users/me");
           setUser(freshUser);
           saveUser(freshUser);
+          identify(freshUser.id, { email: freshUser.email, role: freshUser.role });
         } catch {
           // Если 401 — api-client попробует refresh или разлогинит
           // Если другая ошибка — используем кэшированные данные
@@ -90,6 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Клиент просто сохраняет user data в state и localStorage кэш
     saveUser(userData);
     setUser(userData);
+    identify(userData.id, { email: userData.email, role: userData.role });
   }, []);
 
   const logout = useCallback(async () => {
@@ -99,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       clearUserCache();
       setUser(null);
+      reset();
     }
   }, []);
 

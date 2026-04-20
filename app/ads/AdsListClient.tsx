@@ -9,6 +9,7 @@ import AdFiltersComponent from "@/components/ads/AdFilters";
 import SEOPagination from "@/components/ads/SEOPagination";
 import type { AdFilters, AdFacets } from "@/lib/types/ad";
 import type { Ad } from "@/lib/types/ad";
+import { buildPrettyPath } from "@/lib/seo/pretty-slugs";
 
 const EMPTY_FACETS: AdFacets = {
   platform: {},
@@ -39,8 +40,31 @@ function formatAdCount(n: number): string {
   return `${formatted} ${word}`;
 }
 
-/** Build URL string from filters + page (DB codes, comma-separated). */
+/** Build URL string from filters + page (DB codes, comma-separated).
+ *  Emits a pretty SEO URL (`/ads/almaty`) when exactly one filter dimension
+ *  with a single value is selected and that value maps to a known slug.
+ *  Falls back to `/ads?city=...` for multi-select combinations.
+ */
 function buildURL(filters: AdFilters, page: number): string {
+  // Try pretty URL for single-filter cases (city OR platform only)
+  const hasOnlyPrettyDims =
+    !filters.category?.length &&
+    !filters.budgetType?.length &&
+    !filters.paymentMode?.length &&
+    !filters.videoFormat?.length &&
+    !filters.adFormat?.length &&
+    !filters.adSubject?.length &&
+    !filters.sortBy &&
+    !filters.search;
+
+  if (hasOnlyPrettyDims) {
+    const pretty = buildPrettyPath("/ads", {
+      cities: filters.city ?? [],
+      platforms: filters.platform ?? [],
+    });
+    if (pretty) return page > 1 ? `${pretty}?page=${page}` : pretty;
+  }
+
   const params = new URLSearchParams();
   if (filters.city?.length) params.set("city", filters.city.join(","));
   if (filters.platform?.length)
@@ -369,7 +393,6 @@ export default function AdsListClient({
               <SEOPagination
                 currentPage={clientPage}
                 totalPages={clientTotalPages}
-                baseUrl="/ads"
                 onPageChange={handlePageChange}
               />
             </>

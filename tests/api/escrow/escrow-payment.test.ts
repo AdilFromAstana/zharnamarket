@@ -18,7 +18,11 @@ import {
 import { cityId, categoryId } from "../refs";
 
 import { POST as escrowPay } from "@/app/api/payments/ads/[id]/escrow/route";
-import { POST as webhook } from "@/app/api/payments/webhook/route";
+import { POST as webhookPost } from "@/app/api/payments/webhook/[provider]/route";
+
+function webhook(req: Parameters<typeof webhookPost>[0]) {
+  return webhookPost(req, { params: Promise.resolve({ provider: "mock" }) });
+}
 
 // ─── Shared state ────────────────────────────────────────────────────────────
 

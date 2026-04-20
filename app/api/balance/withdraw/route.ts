@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserId, unauthorized, badRequest, serverError } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { MIN_WITHDRAWAL_AMOUNT } from "@/lib/constants";
-import { VALID_PAYMENT_METHODS } from "@/lib/validation";
+import { VALID_WITHDRAWAL_METHODS } from "@/lib/validation";
+import { sendAdminWithdrawalRequestEmail } from "@/lib/email";
 
 /**
  * POST /api/balance/withdraw — Запрос на вывод средств.
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
     if (!amount || typeof amount !== "number" || amount < MIN_WITHDRAWAL_AMOUNT) {
       return badRequest(`Минимальная сумма вывода: ${MIN_WITHDRAWAL_AMOUNT} ₸`);
     }
-    if (!method || !VALID_PAYMENT_METHODS.has(method)) {
+    if (!method || !VALID_WITHDRAWAL_METHODS.has(method)) {
       return badRequest("Выберите способ вывода: kaspi, halyk, card");
     }
     if (!details || typeof details !== "string" || !details.trim()) {
@@ -76,6 +77,24 @@ export async function POST(req: NextRequest) {
     if (!withdrawal) {
       return badRequest("Недостаточно средств на балансе");
     }
+
+    // Admin-алерт. Fire-and-forget — если ADMIN_EMAIL не настроен или SMTP
+    // падает, пользователь всё равно получает 201 с заявкой.
+    (async () => {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true },
+      });
+      if (!user?.email) return;
+      await sendAdminWithdrawalRequestEmail({
+        userEmail: user.email,
+        amount: withdrawal.amount,
+        method: withdrawal.method,
+        requestId: withdrawal.id,
+      });
+    })().catch((err) => {
+      console.error("[withdraw] admin alert failed:", err);
+    });
 
     return NextResponse.json(withdrawal, { status: 201 });
   } catch (err) {

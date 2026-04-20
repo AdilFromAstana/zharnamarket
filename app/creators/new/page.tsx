@@ -1,142 +1,102 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Form, Button, Breadcrumb } from "antd";
-import {
-  ArrowRightOutlined,
-  ArrowLeftOutlined,
-  CloseOutlined,
-} from "@ant-design/icons";
+import { Form, Button } from "antd";
+import { ArrowRightOutlined } from "@ant-design/icons";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { STORAGE_KEYS } from "@/lib/constants";
-import { useCities, usePlatforms, useCategories, useAdFormats } from "@/hooks/useRefData";
+import {
+  useCities,
+  usePlatforms,
+  useCategories,
+  useAdFormats,
+} from "@/hooks/useRefData";
 import { toast } from "sonner";
 import PublicLayout from "@/components/layout/PublicLayout";
 import StickyBottomBar from "@/components/ui/StickyBottomBar";
 import { api, ApiError } from "@/lib/api-client";
+import {
+  PLATFORM_URL_CONFIG,
+  buildCreatorPlatforms,
+  buildCreatorPortfolio,
+  buildCreatorPricing,
+} from "@/lib/creator-form-config";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import ProfileTipsSidebar from "./_components/ProfileTipsSidebar";
+import { useAuth } from "@/contexts/AuthContext";
+import { useAvatarUpload } from "@/hooks/useAvatarUpload";
+import { useFetchFollowers } from "@/hooks/useFetchFollowers";
 import StepHeader from "./_components/StepHeader";
 import Step1Basics from "./_components/Step1Basics";
 import Step2Platforms from "./_components/Step2Platforms";
 import Step3Contacts from "./_components/Step3Contacts";
+import Step4Portfolio, {
+  type PortfolioDraftBase,
+} from "./_components/Step4Portfolio";
 
-const STEP_LABELS = ["Основа", "Платформы", "Контакты и цены"];
-const STEP_TITLES: Record<1 | 2 | 3, string> = {
+type PortfolioDraftItem = PortfolioDraftBase;
+
+type StepNum = 1 | 2 | 3 | 4;
+
+const STEP_LABELS = ["Основа", "Платформы", "Контакты и цены", "Портфолио"];
+const STEP_TITLES: Record<StepNum, string> = {
   1: "Расскажите о себе",
   2: "Где вы публикуете контент",
   3: "Как с вами связаться",
+  4: "Покажите свои работы",
 };
 
-const PLATFORM_URL_CONFIG: Record<
-  string,
-  {
-    prefix: string;
-    letter: string;
-    badgeClass: string;
-    placeholder: string;
-  }
-> = {
-  TikTok: {
-    prefix: "tiktok.com/@",
-    letter: "T",
-    badgeClass: "bg-black text-white",
-    placeholder: "username",
-  },
-  Instagram: {
-    prefix: "instagram.com/",
-    letter: "I",
-    badgeClass:
-      "bg-gradient-to-br from-fuchsia-500 via-pink-500 to-amber-400 text-white",
-    placeholder: "username",
-  },
-  YouTube: {
-    prefix: "youtube.com/@",
-    letter: "Y",
-    badgeClass: "bg-red-600 text-white",
-    placeholder: "channel",
-  },
-  Threads: {
-    prefix: "threads.net/@",
-    letter: "@",
-    badgeClass: "bg-neutral-900 text-white",
-    placeholder: "username",
-  },
-  Telegram: {
-    prefix: "t.me/",
-    letter: "T",
-    badgeClass: "bg-sky-500 text-white",
-    placeholder: "username или t.me/channel",
-  },
-  VK: {
-    prefix: "vk.com/",
-    letter: "V",
-    badgeClass: "bg-blue-600 text-white",
-    placeholder: "id или short name",
-  },
+const DRAFT_EXTRAS_KEY = `${STORAGE_KEYS.CREATOR_DRAFT}:extras`;
+
+type DraftExtras = {
+  avatar: string | null;
+  portfolio: PortfolioDraftItem[];
 };
 
-function extractHandle(raw: string): string {
-  const v = raw.trim();
-  if (!v) return "";
-  if (/^https?:\/\//i.test(v)) {
-    try {
-      const parts = new URL(v).pathname.split("/").filter(Boolean);
-      return (parts[0] ?? "").replace(/^@/, "");
-    } catch {
-      return v.replace(/^@/, "");
-    }
+function loadExtras(): DraftExtras {
+  try {
+    const raw = localStorage.getItem(DRAFT_EXTRAS_KEY);
+    if (!raw) return { avatar: null, portfolio: [] };
+    const parsed = JSON.parse(raw) as Partial<DraftExtras>;
+    return {
+      avatar: typeof parsed.avatar === "string" ? parsed.avatar : null,
+      portfolio: Array.isArray(parsed.portfolio) ? parsed.portfolio : [],
+    };
+  } catch {
+    return { avatar: null, portfolio: [] };
   }
-  return v.replace(/^@/, "").replace(/^\//, "");
 }
 
-function buildPlatformUrl(platformKey: string, handle: string): string {
-  const cfg = PLATFORM_URL_CONFIG[platformKey];
-  const clean = extractHandle(handle);
-  if (!clean) return "";
-  if (!cfg) return clean;
-  return `https://${cfg.prefix}${clean}`;
-}
-
-function buildPriceLabel(
-  platform: string | undefined,
-  adFormatLabel: string,
-): string {
-  return platform ? `${platform} — ${adFormatLabel}` : adFormatLabel;
+function saveExtras(extras: DraftExtras) {
+  try {
+    localStorage.setItem(DRAFT_EXTRAS_KEY, JSON.stringify(extras));
+  } catch {
+    /* ignore quota errors */
+  }
 }
 
 export default function CreatorNewPage() {
   useRequireAuth();
+  const { user } = useAuth();
 
   const router = useRouter();
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<StepNum>(1);
   const [loading, setLoading] = useState(false);
   const [form] = Form.useForm();
   const { data: adFormats = [] } = useAdFormats();
-  const [fetchingPlatform, setFetchingPlatform] = useState<string | null>(null);
+  const {
+    url: avatarUrl,
+    setUrl: setAvatarUrl,
+    uploading: avatarUploading,
+    upload: handleAvatarUpload,
+  } = useAvatarUpload();
+  const { fetchingPlatform, fetchFollowers: handleFetchFollowers } =
+    useFetchFollowers(form);
+  const [portfolioItems, setPortfolioItems] = useState<PortfolioDraftItem[]>(
+    [],
+  );
   const { data: cities = [] } = useCities();
   const { data: platforms = [] } = usePlatforms();
   const { data: categories = [] } = useCategories();
-
-  const watchedTitle = Form.useWatch("title", form) as string | undefined;
-  const watchedCity = Form.useWatch("city", form) as string | undefined;
-  const watchedPlatformHandles = Form.useWatch("platformHandles", form) as
-    | Record<string, string>
-    | undefined;
-  const watchedPlatforms = Object.entries(watchedPlatformHandles ?? {})
-    .filter(([, v]) => extractHandle(v ?? "").length > 0)
-    .map(([k]) => k);
-  const watchedCategories = Form.useWatch("categories", form) as
-    | string[]
-    | undefined;
-  const watchedTelegram = Form.useWatch("telegram", form) as string | undefined;
-  const watchedPriceItems = Form.useWatch("priceItems", form) as
-    | { adFormatLabel?: string; price?: number }[]
-    | undefined;
-  const priceItemsCount = (watchedPriceItems ?? []).filter(
-    (item) => item?.adFormatLabel && (item?.price ?? 0) > 0,
-  ).length;
 
   useEffect(() => {
     try {
@@ -148,7 +108,23 @@ export default function CreatorNewPage() {
     } catch {
       /* ignore corrupted data */
     }
-  }, [form]);
+    const extras = loadExtras();
+    setAvatarUrl(extras.avatar);
+    setPortfolioItems(extras.portfolio);
+  }, [form, setAvatarUrl]);
+
+  // Префил Telegram из привязанного аккаунта, если поле пустое
+  useEffect(() => {
+    const tg = user?.telegramUsername;
+    if (!tg) return;
+    if (!form.getFieldValue("telegram")) {
+      form.setFieldValue("telegram", tg);
+    }
+  }, [user?.telegramUsername, form]);
+
+  useEffect(() => {
+    saveExtras({ avatar: avatarUrl, portfolio: portfolioItems });
+  }, [avatarUrl, portfolioItems]);
 
   const saveDraft = () => {
     try {
@@ -162,44 +138,46 @@ export default function CreatorNewPage() {
     }
   };
 
-  const handleFetchFollowers = async (platformKey: string) => {
-    const raw =
-      (form.getFieldValue(["platformHandles", platformKey]) as
-        | string
-        | undefined) ?? "";
-    const value = raw.trim();
-    if (!value) {
-      toast.error("Сначала вставьте ссылку на профиль");
-      return;
+  const stepFieldMap: Record<StepNum, string[]> = {
+    1: ["fullName", "title", "city", "categories"],
+    2: [],
+    3: ["telegram", "email"],
+    4: [],
+  };
+
+  const validateStep2Platforms = (): boolean => {
+    const handles =
+      (form.getFieldValue("platformHandles") as
+        | Record<string, string | undefined>
+        | undefined) ?? {};
+    const hasAny = Object.values(handles).some((v) => (v ?? "").trim().length > 0);
+    if (!hasAny) {
+      toast.error("Укажите хотя бы одну платформу");
+      return false;
     }
-    setFetchingPlatform(platformKey);
-    try {
-      const res = await fetch(
-        `/api/scrape/followers?platform=${encodeURIComponent(platformKey)}&url=${encodeURIComponent(value)}`,
-        { cache: "no-store" },
-      );
-      const data = (await res.json()) as
-        | { ok: true; followers: number }
-        | { ok: false; error: string };
-      if (data.ok) {
-        form.setFieldValue(["platformFollowers", platformKey], data.followers);
-        toast.success(
-          `${platformKey}: ${data.followers.toLocaleString("ru-RU")} подписчиков`,
-        );
-      } else {
-        toast.error(data.error || "Не удалось получить подписчиков");
-      }
-    } catch {
-      toast.error("Ошибка запроса");
-    } finally {
-      setFetchingPlatform(null);
+    return true;
+  };
+
+  const cleanupStep3Prices = () => {
+    const items =
+      (form.getFieldValue("priceItems") as
+        | {
+            platform?: string;
+            adFormatLabel?: string;
+            price?: number;
+            priceUnit?: string;
+          }[]
+        | undefined) ?? [];
+    const cleaned = items.filter(
+      (it) => it?.adFormatLabel?.trim() || (it?.price ?? 0) > 0,
+    );
+    if (cleaned.length !== items.length) {
+      form.setFieldValue("priceItems", cleaned);
     }
   };
 
-  const stepFieldMap: Record<1 | 2 | 3, string[]> = {
-    1: ["title", "city", "categories"],
-    2: [],
-    3: ["telegram"],
+  const cleanupStep4Portfolio = () => {
+    setPortfolioItems((prev) => prev.filter((p) => p.videoUrl.trim().length > 0));
   };
 
   const handleNext = async () => {
@@ -208,8 +186,11 @@ export default function CreatorNewPage() {
       if (fields.length > 0) {
         await form.validateFields(fields);
       }
-      if (step < 3) {
-        setStep((s) => (s + 1) as 1 | 2 | 3);
+      if (step === 2 && !validateStep2Platforms()) return;
+      if (step === 3) cleanupStep3Prices();
+      if (step === 4) cleanupStep4Portfolio();
+      if (step < 4) {
+        setStep((s) => (s + 1) as StepNum);
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     } catch {
@@ -219,7 +200,7 @@ export default function CreatorNewPage() {
 
   const handleBack = () => {
     if (step > 1) {
-      setStep((s) => (s - 1) as 1 | 2 | 3);
+      setStep((s) => (s - 1) as StepNum);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } else {
       router.push("/cabinet");
@@ -235,61 +216,52 @@ export default function CreatorNewPage() {
     }
     setLoading(true);
     try {
-      const rawItems =
-        (values.priceItems as
-          | { platform?: string; adFormatLabel: string; price: number }[]
-          | undefined) ?? [];
-      const priceItems = rawItems
-        .filter((item) => item?.adFormatLabel && item?.price > 0)
-        .map((item) => ({
-          label: buildPriceLabel(item.platform, item.adFormatLabel),
-          price: item.price,
-        }));
-      const minimumRate =
-        priceItems.length > 0 ? Math.min(...priceItems.map((i) => i.price)) : 0;
-      const platformHandles =
-        (values.platformHandles as Record<string, string> | undefined) ?? {};
-      const platformFollowers =
-        (values.platformFollowers as
+      const pricing = buildCreatorPricing(
+        values.priceItems as Parameters<typeof buildCreatorPricing>[0],
+      );
+      const platformsPayload = buildCreatorPlatforms(
+        values.platformHandles as Record<string, string | undefined> | undefined,
+        values.platformFollowers as
           | Record<string, number | null | undefined>
-          | undefined) ?? {};
-      const platformsPayload = Object.entries(platformHandles)
-        .map(([name, raw]) => {
-          const handle = extractHandle(raw ?? "");
-          const followers = platformFollowers[name];
-          return handle
-            ? {
-                name,
-                handle,
-                url: buildPlatformUrl(name, raw ?? ""),
-                followers:
-                  typeof followers === "number" && followers >= 0
-                    ? followers
-                    : null,
-              }
-            : null;
-        })
-        .filter((v): v is NonNullable<typeof v> => v !== null);
-      const profile = await api.post<{ id: string }>("/api/creators", {
-        title: values.title,
-        fullName: values.title,
-        city: values.city,
-        availability: "available",
-        contentCategories: values.categories,
-        platforms: platformsPayload,
-        contacts: {
-          telegram: values.telegram ? `@${values.telegram}` : null,
-          whatsapp: values.whatsapp ?? null,
+          | undefined,
+      );
+      const portfolioPayload = buildCreatorPortfolio(portfolioItems);
+      const profile = await api.post<{ id: string; isPublished: boolean }>(
+        "/api/creators",
+        {
+          title: values.title,
+          fullName: values.fullName,
+          username: values.username || null,
+          bio: values.bio || null,
+          city: values.city,
+          availability: values.availability ?? "available",
+          contentCategories: values.categories,
+          platforms: platformsPayload,
+          avatar: avatarUrl,
+          portfolio: portfolioPayload,
+          contacts: {
+            telegram: values.telegram ? `@${values.telegram}` : null,
+            whatsapp: values.whatsapp ?? null,
+            phone: values.phone ?? null,
+            email: values.email ?? null,
+          },
+          pricing: {
+            minimumRate: pricing.minimumRate,
+            negotiable: values.negotiable ?? true,
+            items: pricing.items,
+          },
         },
-        pricing: {
-          minimumRate,
-          negotiable: true,
-          items: priceItems,
-        },
-      });
+      );
       localStorage.removeItem(STORAGE_KEYS.CREATOR_DRAFT);
-      toast.success("Профиль создан!");
-      router.push(`/creators/${profile.id}`);
+      localStorage.removeItem(DRAFT_EXTRAS_KEY);
+      if (profile.isPublished) {
+        router.push(`/creators/${profile.id}/published`);
+      } else {
+        toast.success(
+          "Профиль создан как черновик. Добавьте фото и работу в портфолио, чтобы опубликовать.",
+        );
+        router.push(`/creators/manage`);
+      }
     } catch (err) {
       if (err instanceof ApiError) {
         toast.error(
@@ -303,105 +275,95 @@ export default function CreatorNewPage() {
     }
   };
 
-  const isLastStep = step === 3;
+  const isLastStep = step === 4;
   const primaryLabel = isLastStep ? "Создать профиль" : "Далее";
   const primaryAction = isLastStep ? handleSubmit : handleNext;
 
   return (
     <PublicLayout>
       <div className="-mt-8 sm:mt-0" />
-      <Breadcrumb
-        className="mb-4 hidden sm:block"
-        items={[
-          { title: <Link href="/">Главная</Link> },
-          { title: <Link href="/cabinet">Кабинет</Link> },
-          { title: "Новый профиль" },
-        ]}
-      />
-
       <StepHeader
         step={step}
         stepTitle={STEP_TITLES[step]}
         stepLabels={STEP_LABELS}
       />
 
-      <div className="max-w-5xl mx-auto">
-        <div className="lg:grid lg:grid-cols-[1fr_320px] lg:gap-8 lg:items-start">
-          <div className="pb-28 lg:pb-8">
-            <div className="bg-white rounded-2xl border border-gray-200 p-6">
-              <Form
-                form={form}
-                name="creator_new"
-                layout="vertical"
-                size="large"
-                onValuesChange={saveDraft}
-              >
-                <div className={step === 1 ? "" : "hidden"}>
-                  <Step1Basics
-                    form={form}
-                    cities={cities}
-                    categories={categories}
-                  />
-                </div>
-                <div className={step === 2 ? "" : "hidden"}>
-                  <Step2Platforms
-                    form={form}
-                    platforms={platforms}
-                    fetchingPlatform={fetchingPlatform}
-                    onFetchFollowers={handleFetchFollowers}
-                    platformUrlConfig={PLATFORM_URL_CONFIG}
-                  />
-                </div>
-                <div className={step === 3 ? "" : "hidden"}>
-                  <Step3Contacts
-                    form={form}
-                    platforms={platforms}
-                    adFormats={adFormats}
-                  />
-                </div>
-              </Form>
-            </div>
-
-            <div className="hidden lg:flex items-center gap-3 mt-6 pt-4 border-t border-gray-100">
-              <Button
-                size="large"
-                icon={step === 1 ? <CloseOutlined /> : <ArrowLeftOutlined />}
-                onClick={handleBack}
-                style={{ height: 48, width: 48, flexShrink: 0, padding: 0 }}
-                aria-label={step === 1 ? "Отменить" : "Назад"}
-              />
-              <Button
-                type="primary"
-                size="large"
-                block
-                icon={<ArrowRightOutlined />}
-                iconPlacement="end"
-                onClick={primaryAction}
-                loading={loading}
-                style={{
-                  height: 48,
-                  fontSize: 16,
-                  fontWeight: 600,
-                  background: "#3B82F6",
-                  borderColor: "#3B82F6",
-                  flex: 1,
-                }}
-              >
-                {primaryLabel}
-              </Button>
-            </div>
+      <div>
+        <div className="pb-28 lg:pb-8">
+          <div className="bg-white rounded-2xl border border-gray-200 p-6">
+            <Form
+              form={form}
+              name="creator_new"
+              layout="vertical"
+              size="large"
+              onValuesChange={saveDraft}
+            >
+              <div className={step === 1 ? "" : "hidden"}>
+                <Step1Basics
+                  form={form}
+                  cities={cities}
+                  categories={categories}
+                  avatar={{
+                    url: avatarUrl,
+                    uploading: avatarUploading,
+                    onUpload: handleAvatarUpload,
+                  }}
+                />
+              </div>
+              <div className={step === 2 ? "" : "hidden"}>
+                <Step2Platforms
+                  form={form}
+                  platforms={platforms}
+                  fetchingPlatform={fetchingPlatform}
+                  onFetchFollowers={handleFetchFollowers}
+                  platformUrlConfig={PLATFORM_URL_CONFIG}
+                />
+              </div>
+              <div className={step === 3 ? "" : "hidden"}>
+                <Step3Contacts
+                  form={form}
+                  platforms={platforms}
+                  adFormats={adFormats}
+                />
+              </div>
+              <div className={step === 4 ? "" : "hidden"}>
+                <Step4Portfolio
+                  items={portfolioItems}
+                  onChange={setPortfolioItems}
+                  categories={categories}
+                />
+              </div>
+            </Form>
           </div>
 
-          <aside className="hidden lg:block lg:sticky lg:top-[88px] self-start">
-            <ProfileTipsSidebar
-              title={watchedTitle}
-              city={watchedCity}
-              platforms={watchedPlatforms}
-              categories={watchedCategories}
-              telegram={watchedTelegram}
-              priceItemsCount={priceItemsCount}
-            />
-          </aside>
+          <div className="hidden lg:flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="text-sm text-gray-500 hover:text-gray-700 transition-colors cursor-pointer"
+            >
+              {step === 1 ? "Отменить" : "← Назад"}
+            </button>
+            <Button
+              type="primary"
+              size="large"
+              icon={<ArrowRightOutlined />}
+              iconPlacement="end"
+              onClick={primaryAction}
+              loading={loading}
+              style={{
+                height: 44,
+                fontSize: 15,
+                fontWeight: 600,
+                paddingLeft: 32,
+                paddingRight: 32,
+                background: "#3B82F6",
+                borderColor: "#3B82F6",
+              }}
+            >
+              {primaryLabel}
+            </Button>
+          </div>
         </div>
       </div>
 

@@ -6,7 +6,10 @@ import { WalletOutlined, CreditCardOutlined } from "@ant-design/icons";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
 import { useInvalidateBalance } from "@/hooks/useBalance";
-import { MIN_WITHDRAWAL_AMOUNT, PLATFORM_COMMISSION_RATE } from "@/lib/constants";
+import {
+  MIN_WITHDRAWAL_AMOUNT,
+  PLATFORM_COMMISSION_RATE,
+} from "@/lib/constants";
 
 type WithdrawMethod = "kaspi" | "halyk" | "card";
 
@@ -22,7 +25,13 @@ interface WithdrawDrawerProps {
   maxBalance?: number;
 }
 
-function WithdrawForm({ onSuccess, maxBalance }: { onSuccess: () => void; maxBalance?: number }) {
+function WithdrawForm({
+  onSuccess,
+  maxBalance,
+}: {
+  onSuccess: () => void;
+  maxBalance?: number;
+}) {
   const [amount, setAmount] = useState<number | null>(null);
   const [method, setMethod] = useState<WithdrawMethod>("kaspi");
   const [details, setDetails] = useState("");
@@ -34,7 +43,10 @@ function WithdrawForm({ onSuccess, maxBalance }: { onSuccess: () => void; maxBal
 
   const handleAmountInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/\s/g, "").replace(/[^\d]/g, "");
-    if (raw === "") { setAmount(null); return; }
+    if (raw === "") {
+      setAmount(null);
+      return;
+    }
     setAmount(Number(raw));
   };
 
@@ -48,7 +60,11 @@ function WithdrawForm({ onSuccess, maxBalance }: { onSuccess: () => void; maxBal
 
     setLoading(true);
     try {
-      await api.post("/api/balance/withdraw", { amount, method, details: details.trim() });
+      await api.post("/api/balance/withdraw", {
+        amount,
+        method,
+        details: details.trim(),
+      });
       toast.success("Заявка на вывод отправлена!", {
         description: `${payout.toLocaleString("ru")} ₸ поступят на ваш счёт`,
       });
@@ -97,14 +113,18 @@ function WithdrawForm({ onSuccess, maxBalance }: { onSuccess: () => void; maxBal
           </div>
           <div className="flex justify-between font-semibold text-gray-900 pt-1.5 border-t border-gray-200">
             <span>Получите</span>
-            <span className="text-emerald-600">{payout.toLocaleString("ru")} ₸</span>
+            <span className="text-emerald-600">
+              {payout.toLocaleString("ru")} ₸
+            </span>
           </div>
         </div>
       )}
 
       {/* Payment method */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-700 mb-2">Куда вывести</h3>
+        <h3 className="text-sm font-semibold text-gray-700 mb-2">
+          Куда вывести
+        </h3>
         <div className="grid grid-cols-3 gap-2">
           {METHODS.map((m) => (
             <button
@@ -144,12 +164,16 @@ function WithdrawForm({ onSuccess, maxBalance }: { onSuccess: () => void; maxBal
         <Input
           value={details}
           onChange={(e) => setDetails(e.target.value)}
-          placeholder={method === "kaspi" ? "+7 (777) 123-45-67" : "4400 0000 0000 0000"}
+          placeholder={
+            method === "kaspi" ? "+7 (777) 123-45-67" : "4400 0000 0000 0000"
+          }
           size="large"
           className="rounded-xl"
         />
         <p className="text-xs text-gray-400 mt-1">
-          {method === "kaspi" ? "Номер телефона Kaspi" : "Номер карты для перевода"}
+          {method === "kaspi"
+            ? "Номер телефона Kaspi"
+            : "Номер карты для перевода"}
         </p>
       </div>
 

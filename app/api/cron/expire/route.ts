@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import type { BoostType } from "@prisma/client";
 import { shouldRaise, RAISE_PRIORITY } from "@/lib/boost";
+import {
+  sendAdExpiringEmail,
+  sendBudgetExhaustedEmail,
+  sendAdminSlaEscalationEmail,
+} from "@/lib/email";
 
 /**
  * GET /api/cron/expire — авто-истечение объявлений, очистка бустов и сессий.
@@ -44,10 +49,8 @@ export async function GET(req: NextRequest) {
       data: { status: "expired" },
     });
 
-    // 2. AdBoost: удаляем истёкшие записи
-    const deletedBoosts = await prisma.adBoost.deleteMany({
-      where: { expiresAt: { lt: now } },
-    });
+    // 2. AdBoost: истёкшие НЕ удаляем (сохраняем историю для аналитики и аудита).
+    // Фильтры по `expiresAt > now` в запросах уже корректно исключают их из активных.
 
     // 2.5. Периодический подъём бустованных объявлений
     // Находим все объявления с ещё активными бустами
@@ -90,10 +93,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 2b. CreatorBoost: удаляем истёкшие записи
-    const deletedCreatorBoosts = await prisma.creatorBoost.deleteMany({
-      where: { expiresAt: { lt: now } },
-    });
+    // 2b. CreatorBoost: истёкшие НЕ удаляем (сохраняем историю).
 
     // 2c. Периодический подъём бустованных профилей креаторов
     const allActiveCreatorBoosts = await prisma.creatorBoost.findMany({
@@ -140,39 +140,129 @@ export async function GET(req: NextRequest) {
       where: { expiresAt: { lt: now } },
     });
 
-    // 4. VideoSubmission: SLA escalation (submitted > 24h)
-    const escalatedSubmissions = await prisma.videoSubmission.updateMany({
+    // 3b. Напоминание за ~24ч до истечения.
+    // Окно [now+23ч, now+25ч] + флаг expiryReminderSentAt=null гарантируют
+    // идемпотентность: при любой частоте cron ≤ 2ч письмо уйдёт ровно один раз.
+    const reminderWindowStart = new Date(now.getTime() + 23 * 60 * 60 * 1000);
+    const reminderWindowEnd = new Date(now.getTime() + 25 * 60 * 60 * 1000);
+    const expiringAds = await prisma.ad.findMany({
+      where: {
+        status: "active",
+        expiresAt: { gte: reminderWindowStart, lte: reminderWindowEnd },
+        expiryReminderSentAt: null,
+      },
+      select: {
+        id: true,
+        title: true,
+        expiresAt: true,
+        owner: { select: { email: true } },
+      },
+    });
+
+    let expiryRemindersSent = 0;
+    for (const ad of expiringAds) {
+      if (!ad.owner?.email || !ad.expiresAt) continue;
+      try {
+        await sendAdExpiringEmail(ad.owner.email, {
+          adTitle: ad.title,
+          adId: ad.id,
+          expiresAt: ad.expiresAt,
+        });
+        await prisma.ad.update({
+          where: { id: ad.id },
+          data: { expiryReminderSentAt: new Date() },
+        });
+        expiryRemindersSent++;
+      } catch (err) {
+        // Письмо не ушло — флаг не ставим, повторится на следующем тике.
+        console.error("[Cron] expiring-email failed for ad", ad.id, err);
+      }
+    }
+
+    // 4. VideoSubmission: SLA escalation (submitted > 24h).
+    // Сначала читаем кого эскалировать — нужно для сводного письма админу,
+    // потом одним апдейтом помечаем escalated. Если письмо не ушло — ничего
+    // страшного: флаг уже стоит, повторного спама не будет.
+    const toEscalate = await prisma.videoSubmission.findMany({
       where: {
         status: "submitted",
         slaDeadline: { lt: now },
         escalated: false,
       },
-      data: { escalated: true },
+      select: {
+        id: true,
+        ad: { select: { title: true } },
+        creator: { select: { email: true } },
+      },
     });
 
-    // 5. Escrow ads: budget_exhausted check
+    let escalatedCount = 0;
+    if (toEscalate.length > 0) {
+      const updated = await prisma.videoSubmission.updateMany({
+        where: { id: { in: toEscalate.map((s) => s.id) } },
+        data: { escalated: true },
+      });
+      escalatedCount = updated.count;
+
+      try {
+        await sendAdminSlaEscalationEmail({
+          escalatedCount,
+          items: toEscalate.map((s) => ({
+            submissionId: s.id,
+            taskTitle: s.ad?.title ?? "(без названия)",
+            creatorEmail: s.creator?.email ?? "(нет email)",
+          })),
+        });
+      } catch (err) {
+        console.error("[Cron] SLA-admin email failed:", err);
+      }
+    }
+
+    // 5. Escrow ads: budget_exhausted check.
+    // Loop вместо updateMany: нужно знать переход «active → budget_exhausted»
+    // per-ad, чтобы послать владельцу ровно одно письмо, и только в момент перехода.
     const exhaustedEscrows = await prisma.escrowAccount.findMany({
       where: {
         status: "active",
         available: { lte: 0 },
         reservedAmount: { lte: 0 },
       },
-      select: { adId: true },
+      select: {
+        adId: true,
+        ad: { select: { title: true, status: true, owner: { select: { email: true } } } },
+      },
     });
 
     let exhaustedAdsCount = 0;
-    if (exhaustedEscrows.length > 0) {
-      const exhaustedAdIds = exhaustedEscrows.map((e) => e.adId);
-      const updated = await prisma.ad.updateMany({
-        where: { id: { in: exhaustedAdIds }, status: "active" },
+    for (const esc of exhaustedEscrows) {
+      if (esc.ad?.status !== "active") {
+        // Объявление уже не active — просто чиним escrow-статус, письма нет.
+        await prisma.escrowAccount.updateMany({
+          where: { adId: esc.adId, status: "active" },
+          data: { status: "exhausted" },
+        });
+        continue;
+      }
+      await prisma.ad.update({
+        where: { id: esc.adId },
         data: { status: "budget_exhausted" },
       });
-      exhaustedAdsCount = updated.count;
-
       await prisma.escrowAccount.updateMany({
-        where: { adId: { in: exhaustedAdIds }, status: "active" },
+        where: { adId: esc.adId, status: "active" },
         data: { status: "exhausted" },
       });
+      exhaustedAdsCount++;
+
+      if (esc.ad.owner?.email) {
+        try {
+          await sendBudgetExhaustedEmail(esc.ad.owner.email, {
+            adTitle: esc.ad.title,
+            adId: esc.adId,
+          });
+        } catch (err) {
+          console.error("[Cron] budget-exhausted email failed for ad", esc.adId, err);
+        }
+      }
     }
 
     // 6. Escrow ads: block submissions past deadline
@@ -182,12 +272,11 @@ export async function GET(req: NextRequest) {
       ok: true,
       timestamp: now.toISOString(),
       expiredAds: expiredAds.count,
-      deletedBoosts: deletedBoosts.count,
       raisedAds: raisedAdsCount,
-      deletedCreatorBoosts: deletedCreatorBoosts.count,
       raisedCreators: raisedCreatorsCount,
       deletedSessions: deletedSessions.count,
-      escalatedSubmissions: escalatedSubmissions.count,
+      expiryRemindersSent,
+      escalatedSubmissions: escalatedCount,
       exhaustedAds: exhaustedAdsCount,
     };
 

@@ -12,7 +12,6 @@ import { api } from "@/lib/api-client";
 import CreatorDetailHeader from "./CreatorDetailHeader";
 import CreatorProfileSidebar from "./CreatorProfileSidebar";
 import CreatorPortfolioSection from "./CreatorPortfolioSection";
-import CreatorProofsSection from "./CreatorProofsSection";
 import CreatorStickyBar from "./CreatorStickyBar";
 
 interface CreatorDetailClientProps {
@@ -75,7 +74,6 @@ export default function CreatorDetailClient({
           )}
 
           <CreatorPortfolioSection portfolio={creator.portfolio} />
-          <CreatorProofsSection portfolio={creator.portfolio} />
           <ReviewsSection
             creatorProfileId={creator.id}
             creatorUserId={creator.userId}

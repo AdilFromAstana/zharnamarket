@@ -4,6 +4,7 @@ import { AntdRegistry } from "@ant-design/nextjs-registry";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/contexts/AuthContext";
 import QueryProvider from "@/providers/QueryProvider";
+import { AnalyticsProvider } from "./providers";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -84,14 +85,16 @@ export default function RootLayout({
   return (
     <html lang="ru">
       <body className="antialiased">
-        <AntdRegistry>
-          <QueryProvider>
-            <AuthProvider>
-              {children}
-            </AuthProvider>
-          </QueryProvider>
-        </AntdRegistry>
-        <Toaster position="top-right" richColors />
+        <AnalyticsProvider>
+          <AntdRegistry>
+            <QueryProvider>
+              <AuthProvider>
+                {children}
+              </AuthProvider>
+            </QueryProvider>
+          </AntdRegistry>
+          <Toaster position="top-right" richColors />
+        </AnalyticsProvider>
       </body>
     </html>
   );

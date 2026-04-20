@@ -451,6 +451,10 @@ model Ad {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  // Флаг идемпотентности cron: проставляется после отправки письма
+  // «объявление истекает через 24ч», чтобы не слать напоминание повторно.
+  expiryReminderSentAt DateTime?
+
    // Связи
    boosts        AdBoost[]
    payments      PaymentSession[]
@@ -618,6 +622,7 @@ model PortfolioItem {
    category    Category? @relation(fields: [categoryId], references: [id])
    description String?
    views       Int?
+   likes       Int?
 
   // Новое категорийное измерение
   videoFormatId String?

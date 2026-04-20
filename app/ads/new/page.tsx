@@ -1,16 +1,17 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import Link from "next/link";
-import { Breadcrumb, Button, Form } from "antd";
+import { Button, Form } from "antd";
 import { ArrowRightOutlined, CreditCardOutlined } from "@ant-design/icons";
 import { useRouter, useSearchParams } from "next/navigation";
 import PublicLayout from "@/components/layout/PublicLayout";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import StickyBottomBar from "@/components/ui/StickyBottomBar";
 import { PUBLICATION_PRICE, STORAGE_KEYS } from "@/lib/constants";
 import { api, ApiError } from "@/lib/api-client";
 import { useBalance } from "@/hooks/useBalance";
+import { usePaymentMethods } from "@/hooks/usePaymentMethods";
 import type { BudgetType } from "@/lib/types/ad";
 import type { PaymentMethod } from "@/lib/types/payment";
 import { toast } from "sonner";
@@ -37,6 +38,7 @@ const STEP0_STORAGE_KEY = "business_contact_done";
 
 function NewAdPageInner() {
   useRequireAuth();
+  const { user } = useAuth();
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -53,6 +55,8 @@ function NewAdPageInner() {
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("kaspi");
   const walletBalance = useBalance();
+  const { methods: providerMethods, isEmpty: providersEmpty } =
+    usePaymentMethods();
 
   const [promoCodeInput, setPromoCodeInput] = useState("");
   const [promoLoading, setPromoLoading] = useState(false);
@@ -89,6 +93,18 @@ function NewAdPageInner() {
     }
   }, [form]);
 
+  // Префил Telegram из привязанного аккаунта, если поле пустое
+  useEffect(() => {
+    const tg = user?.telegramUsername;
+    if (!tg) return;
+    if (!form.getFieldValue("telegram")) {
+      form.setFieldValue("telegram", tg);
+    }
+    if (!form0.getFieldValue("telegram")) {
+      form0.setFieldValue("telegram", tg);
+    }
+  }, [user?.telegramUsername, form, form0]);
+
   // Восстановление состояния оплаты при ?resume=true
   useEffect(() => {
     if (searchParams.get("resume") === "true") {
@@ -110,17 +126,32 @@ function NewAdPageInner() {
     }
   }, [searchParams]);
 
-  // Smart default: auto-select wallet payment if sufficient balance
+  // Smart default: auto-select wallet payment if sufficient balance,
+  // иначе первый доступный провайдер, иначе wallet (даже если баланс 0 — UI заблокирует).
   useEffect(() => {
-    if (step === 4 && walletBalance !== null) {
-      const needed = isEscrowMode
-        ? (form.getFieldValue("totalBudget") ?? 0)
-        : finalPayPrice;
-      if (walletBalance >= needed) {
+    if (step !== 4) return;
+    const needed = isEscrowMode
+      ? (form.getFieldValue("totalBudget") ?? 0)
+      : finalPayPrice;
+    const walletCanPay = walletBalance !== null && walletBalance >= needed;
+
+    if (walletCanPay && paymentMethod !== "wallet") {
+      if (
+        paymentMethod === "kaspi" ||
+        !providerMethods.find((m) => m.id === paymentMethod)
+      ) {
         setPaymentMethod("wallet");
       }
+      return;
     }
-  }, [step, walletBalance]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (
+      paymentMethod !== "wallet" &&
+      providerMethods.length > 0 &&
+      !providerMethods.find((m) => m.id === paymentMethod)
+    ) {
+      setPaymentMethod(providerMethods[0].id);
+    }
+  }, [step, walletBalance, providerMethods]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveDraft = (changed: Partial<FormValues>) => {
     const current = { ...values, ...changed };
@@ -315,15 +346,7 @@ function NewAdPageInner() {
         result.status === "success" ||
         (result as { fromWallet?: boolean }).fromWallet
       ) {
-        const msg = isEscrowMode
-          ? "Бюджет заморожен! Задание опубликовано."
-          : "Оплата прошла! Объявление опубликовано на 7 дней.";
-        toast.success(msg, {
-          description: isEscrowMode
-            ? "Креаторы теперь могут взять задание и подать видео."
-            : "Продвинуть объявление можно позже из личного кабинета.",
-        });
-        router.push("/ads/manage");
+        router.push(`/ads/${createdAdId}/published`);
       } else if (result.paymentUrl) {
         window.location.href = result.paymentUrl;
       } else {
@@ -371,6 +394,8 @@ function NewAdPageInner() {
       ? promoResult.finalAmount
       : PUBLICATION_PRICE;
 
+  const noProviderAvailable = providersEmpty && paymentMethod !== "wallet";
+
   const nextLabel =
     step === 0
       ? "Продолжить →"
@@ -380,9 +405,11 @@ function NewAdPageInner() {
           ? "Предпросмотр"
           : step === 3
             ? "К оплате"
-            : isEscrowMode
-              ? "Заморозить"
-              : "Оплатить";
+            : noProviderAvailable
+              ? "Оплата временно недоступна"
+              : isEscrowMode
+                ? "Заморозить"
+                : "Оплатить";
 
   const stepTitle =
     step === 0
@@ -398,15 +425,6 @@ function NewAdPageInner() {
   return (
     <PublicLayout>
       <div className="-mt-8 sm:mt-0" />
-      <Breadcrumb
-        className="mb-6 hidden sm:block"
-        items={[
-          { title: <Link href="/">Главная</Link> },
-          { title: <Link href="/ads/manage">Мои объявления</Link> },
-          { title: "Новое объявление" },
-        ]}
-      />
-
       <StepHeader step={step} stepTitle={stepTitle} stepLabels={stepLabels} />
 
       <div>
@@ -510,6 +528,7 @@ function NewAdPageInner() {
                 iconPlacement="end"
                 onClick={handleNext}
                 loading={(step === 3 || step === 4) && loading}
+                disabled={step === 4 && noProviderAvailable}
                 style={{
                   height: 44,
                   fontSize: 15,
@@ -550,6 +569,7 @@ function NewAdPageInner() {
           step === 4 ? <CreditCardOutlined /> : <ArrowRightOutlined />
         }
         primaryLoading={(step === 3 || step === 4) && loading}
+        primaryDisabled={step === 4 && noProviderAvailable}
         onBack={step >= 1 ? handleBack : undefined}
         isFirstStep={step === 1}
         cancelHref={step === 1 ? "/ads/manage" : undefined}

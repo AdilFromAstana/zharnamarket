@@ -41,6 +41,13 @@ export function clearUserCache() {
   }
 }
 
+// Удаляет vw_auth_flag локально — нужно при протухшей сессии,
+// чтобы proxy не зациклил redirect'ы /auth/login → / → /auth/login.
+function clearAuthFlag() {
+  if (typeof document === "undefined") return;
+  document.cookie = "vw_auth_flag=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+}
+
 /**
  * Проверяет наличие auth-флага (cookie vw_auth_flag).
  * Этот cookie НЕ httpOnly — клиент может его прочитать.
@@ -143,6 +150,13 @@ export async function apiFetch<T = unknown>(
       const error = new ApiError(401, "Сессия истекла");
       processRefreshQueue(error);
       clearUserCache();
+      clearAuthFlag();
+      // Best-effort: попросим сервер почистить httpOnly cookies.
+      // Endpoint идемпотентный, не требует валидной сессии.
+      fetch(`${API_BASE}/api/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      }).catch(() => {});
       if (typeof window !== "undefined") {
         window.location.href = "/auth/login";
       }

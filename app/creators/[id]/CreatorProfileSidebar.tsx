@@ -44,6 +44,41 @@ export default function CreatorProfileSidebar({
   const availabilityLabel = AVAILABILITY_LABELS[creator.availability];
   const online = isRecentlyActive(creator.metadata.lastActiveAt);
 
+  const daysSinceCreated = Math.floor(
+    (Date.now() - new Date(creator.metadata.createdAt).getTime()) /
+      (1000 * 60 * 60 * 24),
+  );
+  const isNewCreator = daysSinceCreated < 30;
+
+  const lastActiveMs =
+    Date.now() - new Date(creator.metadata.lastActiveAt).getTime();
+  const responseHint = online
+    ? "Обычно отвечает быстро"
+    : lastActiveMs < 3 * 60 * 60 * 1000
+      ? "Обычно отвечает в течение часа"
+      : null;
+
+  const primaryChannel = contactChannels[0];
+  const ctaLabel =
+    primaryChannel === "Telegram"
+      ? "Написать в Telegram"
+      : primaryChannel === "WhatsApp"
+        ? "Написать в WhatsApp"
+        : primaryChannel === "Телефон"
+          ? "Позвонить"
+          : primaryChannel === "Email"
+            ? "Написать на Email"
+            : "Связаться";
+
+  const viewsItems = creator.portfolio.filter((p) => p.views);
+  const avgViews =
+    viewsItems.length > 0
+      ? Math.round(
+          viewsItems.reduce((s, p) => s + (p.views ?? 0), 0) /
+            viewsItems.length,
+        )
+      : null;
+
   const [viewsLast30, setViewsLast30] = useState<number | null>(null);
 
   useEffect(() => {
@@ -147,15 +182,14 @@ export default function CreatorProfileSidebar({
             )}
           </div>
 
-          {/* Social proof + registration date */}
-          <div className="hidden md:flex items-center justify-center gap-2 mt-1.5 text-xs text-gray-400 flex-wrap">
-            {viewsLast30 !== null && (
-              <span>{viewsLast30} просм. за 30 дней</span>
-            )}
-            <span>
-              На платформе с {formatDate(creator.metadata.createdAt)}
-            </span>
-          </div>
+          {/* Registration date — только для проверенных временем */}
+          {!isNewCreator && (
+            <div className="hidden md:flex items-center justify-center gap-2 mt-1.5 text-xs text-gray-400 flex-wrap">
+              <span>
+                На платформе с {formatDate(creator.metadata.createdAt)}
+              </span>
+            </div>
+          )}
 
           {/* Rating */}
           {creator.reviewCount > 0 && (
@@ -176,44 +210,59 @@ export default function CreatorProfileSidebar({
               </span>
             </div>
           )}
+
+          {/* Бейдж "Новый на платформе" — продаёт отсутствие отзывов */}
+          {isNewCreator && creator.reviewCount === 0 && (
+            <div className="inline-flex items-center gap-1.5 mt-3 bg-amber-50 text-amber-700 text-xs font-medium px-2.5 py-1 rounded-full">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+              Новый на платформе · оплата через escrow
+            </div>
+          )}
         </div>
 
         {/* Stats */}
-        {creator.stats && creator.stats.completedOrders > 0 && (
+        {((creator.stats && creator.stats.completedOrders > 0) ||
+          avgViews !== null ||
+          (viewsLast30 !== null && viewsLast30 > 0)) && (
           <div className="mt-5 pt-5 border-t border-gray-100">
             <h3 className="text-sm font-medium text-gray-700 mb-3">
               Статистика
             </h3>
             <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-500">
-                  Заказов выполнено
-                </span>
-                <span className="text-sm font-bold text-gray-900">
-                  {creator.stats.completedOrders}
-                </span>
-              </div>
-              {creator.reviewCount > 0 && (
+              {creator.stats && creator.stats.completedOrders > 0 && (
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-500">
-                    Отзывов получено
+                    Заказов выполнено
                   </span>
                   <span className="text-sm font-bold text-gray-900">
-                    {creator.reviewCount}
+                    {creator.stats.completedOrders}
                   </span>
                 </div>
               )}
-              {creator.stats.successRate !== null && (
+              {avgViews !== null && (
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-500">Успешных сдач</span>
-                  <span className="text-sm font-bold text-green-600">
-                    {creator.stats.successRate}%
+                  <span className="text-sm text-gray-500">
+                    Ср. просмотров / ролик
+                  </span>
+                  <span className="text-sm font-bold text-gray-900">
+                    {formatFollowers(avgViews)}
                   </span>
                 </div>
               )}
-              {viewsLast30 !== null && (
+              {creator.stats?.successRate !== null &&
+                creator.stats?.successRate !== undefined && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-500">Успешных сдач</span>
+                    <span className="text-sm font-bold text-green-600">
+                      {creator.stats.successRate}%
+                    </span>
+                  </div>
+                )}
+              {viewsLast30 !== null && viewsLast30 > 0 && (
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-500">Просмотров за 30 дней</span>
+                  <span className="text-sm text-gray-500">
+                    Просмотров профиля за 30 дней
+                  </span>
                   <span className="text-sm font-bold text-gray-900">
                     {viewsLast30}
                   </span>
@@ -239,14 +288,16 @@ export default function CreatorProfileSidebar({
             <h3 className="text-sm font-medium text-gray-700 mb-3">
               Прайс-лист
             </h3>
-            <div className="flex flex-col gap-0">
+            <div className="flex flex-col gap-2">
               {creator.pricing.items.map((item, i) => (
                 <div
                   key={i}
-                  className="flex items-center justify-between py-2 border-b border-gray-50 last:border-b-0"
+                  className="rounded-lg border border-gray-200 p-3 flex items-start justify-between gap-3 hover:border-sky-200 hover:bg-sky-50/30 transition-colors"
                 >
-                  <span className="text-sm text-gray-700">{item.label}</span>
-                  <span className="text-sm font-bold text-gray-900 shrink-0 ml-3">
+                  <span className="text-sm text-gray-700 leading-snug">
+                    {item.label}
+                  </span>
+                  <span className="text-sm font-bold text-gray-900 shrink-0 whitespace-nowrap">
                     {item.price.toLocaleString("ru-KZ")} ₸
                   </span>
                 </div>
@@ -286,11 +337,16 @@ export default function CreatorProfileSidebar({
               borderColor: "#0EA5E9",
             }}
           >
-            Связаться
+            {ctaLabel}
           </Button>
-          {contactChannels.length > 0 && (
-            <p className="text-xs text-gray-400 text-center mt-2 flex items-center justify-center gap-1">
-              <MobileOutlined /> {contactChannels.join(" · ")}
+          {responseHint && (
+            <p className="text-xs text-green-600 text-center mt-2 font-medium">
+              {responseHint}
+            </p>
+          )}
+          {contactChannels.length > 1 && (
+            <p className="text-xs text-gray-400 text-center mt-1 flex items-center justify-center gap-1">
+              <MobileOutlined /> также {contactChannels.slice(1).join(" · ")}
             </p>
           )}
         </div>
@@ -321,7 +377,7 @@ export default function CreatorProfileSidebar({
                       {p.handle || `@${p.name.toLowerCase()}`}
                     </span>
                   </div>
-                  {p.followers && (
+                  {typeof p.followers === "number" && p.followers > 0 && (
                     <span className="text-xs text-gray-400 shrink-0">
                       {formatFollowers(p.followers)}
                     </span>

@@ -1,6 +1,20 @@
 import PublicLayout from "@/components/layout/PublicLayout";
 import AdsListClient from "./AdsListClient";
-import JsonLd, { breadcrumbSchema, itemListSchema } from "@/components/seo/JsonLd";
+import JsonLd, {
+  breadcrumbSchema,
+  itemListSchema,
+  faqSchema,
+} from "@/components/seo/JsonLd";
+import {
+  buildAdsMeta,
+  cityLabel,
+  cityPrepLabel,
+  platformLabel,
+} from "@/lib/seo/filter-labels";
+import { ADS_LISTING_FAQ } from "@/lib/seo/faq";
+import { buildAdsIntro } from "@/lib/seo/listing-intro";
+import ListingSeoText from "@/components/seo/ListingSeoText";
+import { headers } from "next/headers";
 
 export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
@@ -60,30 +74,53 @@ export async function generateMetadata({
 }: Props): Promise<Metadata> {
   const params = await searchParams;
   const page = parsePage(params.page);
-  const suffix = page > 1 ? ` — Страница ${page}` : "";
 
-  // Build canonical URL with filter codes (excluding search to avoid index duplication)
-  const canonicalParams = new URLSearchParams();
-  if (params.city) canonicalParams.set("city", params.city);
-  if (params.platform) canonicalParams.set("platform", params.platform);
-  if (params.category) canonicalParams.set("category", params.category);
-  if (params.budgetType) canonicalParams.set("budgetType", params.budgetType);
-  if (params.sortBy) canonicalParams.set("sortBy", params.sortBy);
-  if (page > 1) canonicalParams.set("page", String(page));
-  const qs = canonicalParams.toString();
-  const canonical = qs
-    ? `https://zharnamarket.kz/ads?${qs}`
-    : "https://zharnamarket.kz/ads";
+  const cities = parseCSV(params.city);
+  const platforms = parseCSV(params.platform);
+  const categories = parseCSV(params.category);
+
+  const { title, description } = buildAdsMeta({
+    cities,
+    platforms,
+    categories,
+    page,
+  });
+
+  // Pretty URL (rewritten by proxy.ts) → use it as canonical.
+  const h = await headers();
+  const prettyPath = h.get("x-pretty-path");
+
+  let canonical: string;
+  if (prettyPath) {
+    const pageSuffix = page > 1 ? `?page=${page}` : "";
+    canonical = `https://zharnamarket.kz${prettyPath}${pageSuffix}`;
+  } else {
+    // Build canonical URL with filter codes (excluding search to avoid index duplication)
+    const canonicalParams = new URLSearchParams();
+    if (params.city) canonicalParams.set("city", params.city);
+    if (params.platform) canonicalParams.set("platform", params.platform);
+    if (params.category) canonicalParams.set("category", params.category);
+    if (params.budgetType) canonicalParams.set("budgetType", params.budgetType);
+    if (params.sortBy) canonicalParams.set("sortBy", params.sortBy);
+    if (page > 1) canonicalParams.set("page", String(page));
+    const qs = canonicalParams.toString();
+    canonical = qs
+      ? `https://zharnamarket.kz/ads?${qs}`
+      : "https://zharnamarket.kz/ads";
+  }
+
+  const hasSearch = !!params.search?.trim();
 
   return {
-    title: `Объявления${suffix} — Zharnamarket`,
-    description: `Найди рекламные задания для TikTok, Instagram и YouTube в Казахстане. Объявления от бизнеса напрямую без посредников.${suffix}`,
+    title,
+    description,
     openGraph: {
-      title: `Объявления${suffix} — Zharnamarket`,
-      description: `Найди рекламные задания для TikTok, Instagram и YouTube в Казахстане. Объявления от бизнеса напрямую без посредников.${suffix}`,
+      title,
+      description,
       type: "website",
     },
     alternates: { canonical },
+    ...(hasSearch && { robots: { index: false, follow: true } }),
   };
 }
 
@@ -540,6 +577,10 @@ export default async function AdsPage({ searchParams }: Props) {
   const params = await searchParams;
   const page = parsePage(params.page);
 
+  // Pretty URL (rewritten by proxy.ts) — powers breadcrumb and SEO page nav
+  const h = await headers();
+  const prettyPath = h.get("x-pretty-path");
+
   // Parse comma-separated DB codes from URL
   const cities = parseCSV(params.city);
   const platforms = parseCSV(params.platform);
@@ -578,26 +619,45 @@ export default async function AdsPage({ searchParams }: Props) {
     initialFilters.sortBy = params.sortBy as AdFilters["sortBy"];
   if (params.search) initialFilters.search = params.search;
 
+  const breadcrumbs = [
+    { name: "Главная", url: "https://zharnamarket.kz" },
+    { name: "Объявления", url: "https://zharnamarket.kz/ads" },
+  ];
+  let h1 = "Объявления";
+  if (prettyPath && cities.length === 1) {
+    const label = cityLabel(cities[0]);
+    breadcrumbs.push({
+      name: label,
+      url: `https://zharnamarket.kz${prettyPath}`,
+    });
+    h1 = `Реклама в ${cityPrepLabel(cities[0])}`;
+  } else if (prettyPath && platforms.length === 1) {
+    const label = platformLabel(platforms[0]);
+    breadcrumbs.push({
+      name: label,
+      url: `https://zharnamarket.kz${prettyPath}`,
+    });
+    h1 = `Реклама через ${label}`;
+  }
+
   return (
     <PublicLayout>
       <JsonLd
         data={[
-          breadcrumbSchema([
-            { name: "Главная", url: "https://zharnamarket.kz" },
-            { name: "Объявления", url: "https://zharnamarket.kz/ads" },
-          ]),
+          breadcrumbSchema(breadcrumbs),
           itemListSchema(
             "Рекламные объявления — Zharnamarket",
-            ads.slice(0, 10).map((ad, i) => ({
+            ads.slice(0, 20).map((ad, i) => ({
               url: `https://zharnamarket.kz/ads/${ad.id}`,
               name: ad.title,
               position: i + 1,
             })),
           ),
+          faqSchema(ADS_LISTING_FAQ),
         ]}
       />
       <div className="md:mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Объявления</h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">{h1}</h1>
         <p className="text-gray-500">
           Найди подходящий проект и свяжись с бизнесом напрямую
         </p>
@@ -611,6 +671,11 @@ export default async function AdsPage({ searchParams }: Props) {
         initialFacets={facets}
         pageSize={PAGE_SIZE}
       />
+      {page === 1 && (
+        <ListingSeoText
+          content={buildAdsIntro({ cities, platforms, categories })}
+        />
+      )}
     </PublicLayout>
   );
 }

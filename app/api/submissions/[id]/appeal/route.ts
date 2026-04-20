@@ -3,6 +3,7 @@ import { getCurrentUserId, unauthorized, badRequest, serverError } from "@/lib/a
 import { prisma } from "@/lib/prisma";
 import { APPEAL_DEADLINE_HOURS } from "@/lib/constants";
 import { PERMANENT_REJECTION_REASONS } from "@/lib/types/submission";
+import { sendAdminAppealEmail } from "@/lib/email";
 
 /**
  * POST /api/submissions/[id]/appeal — Подать апелляцию на отклонённую подачу.
@@ -58,6 +59,23 @@ export async function POST(
         status: "pending",
         deadline: appealDeadline,
       },
+    });
+
+    // Admin-алерт. Fire-and-forget.
+    (async () => {
+      const creator = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true },
+      });
+      if (!creator?.email) return;
+      await sendAdminAppealEmail({
+        userEmail: creator.email,
+        submissionId,
+        appealId: appeal.id,
+        reason: appeal.reason,
+      });
+    })().catch((err) => {
+      console.error("[appeal] admin alert failed:", err);
     });
 
     return NextResponse.json(appeal, { status: 201 });

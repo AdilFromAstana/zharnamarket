@@ -2,8 +2,10 @@ import { notFound } from "next/navigation";
 import PublicLayout from "@/components/layout/PublicLayout";
 import { mapCreatorFromApi } from "@/lib/mappers/creator";
 import CreatorDetailClient from "./CreatorDetailClient";
-import OtherCreatorProfiles from "./OtherCreatorProfiles";
-import JsonLd, { creatorProfileSchema, breadcrumbSchema } from "@/components/seo/JsonLd";
+import JsonLd, {
+  creatorProfileSchema,
+  breadcrumbSchema,
+} from "@/components/seo/JsonLd";
 import { prisma } from "@/lib/prisma";
 
 interface CreatorPageProps {
@@ -59,7 +61,8 @@ export async function generateMetadata({ params }: CreatorPageProps) {
   const { id } = await params;
   const creator = await fetchCreator(id);
   if (!creator) return { title: "Профиль не найден" };
-  const platformNames = creator.platforms?.map((p: { name: string }) => p.name) ?? [];
+  const platformNames =
+    creator.platforms?.map((p: { name: string }) => p.name) ?? [];
   const keywords = [
     creator.fullName,
     creator.city || "Казахстан",
@@ -89,34 +92,6 @@ export async function generateMetadata({ params }: CreatorPageProps) {
   };
 }
 
-async function fetchOtherProfiles(userId: string, currentId: string) {
-  const raw = await prisma.creatorProfile.findMany({
-    where: {
-      userId,
-      isPublished: true,
-      id: { not: currentId },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 6,
-    select: {
-      id: true,
-      title: true,
-      fullName: true,
-      avatar: true,
-      city: { select: { label: true } },
-      user: { select: { avatarColor: true } },
-    },
-  });
-  return raw.map((p) => ({
-    id: p.id,
-    title: p.title,
-    fullName: p.fullName,
-    city: p.city?.label ?? "",
-    avatar: p.avatar,
-    avatarColor: p.user?.avatarColor ?? null,
-  }));
-}
-
 export default async function CreatorPage({ params }: CreatorPageProps) {
   const { id } = await params;
   const creator = await fetchCreator(id);
@@ -125,16 +100,20 @@ export default async function CreatorPage({ params }: CreatorPageProps) {
     notFound();
   }
 
-  const otherProfiles = await fetchOtherProfiles(creator.userId, creator.id);
-
   return (
     <PublicLayout>
       <JsonLd
         data={[
           breadcrumbSchema([
             { name: "Главная", url: "https://zharnamarket.kz" },
-            { name: "Каталог креаторов", url: "https://zharnamarket.kz/creators" },
-            { name: creator.fullName, url: `https://zharnamarket.kz/creators/${creator.id}` },
+            {
+              name: "Каталог креаторов",
+              url: "https://zharnamarket.kz/creators",
+            },
+            {
+              name: creator.fullName,
+              url: `https://zharnamarket.kz/creators/${creator.id}`,
+            },
           ]),
           creatorProfileSchema({
             id: creator.id,
@@ -149,11 +128,6 @@ export default async function CreatorPage({ params }: CreatorPageProps) {
         ]}
       />
       <CreatorDetailClient creator={creator} />
-      {otherProfiles.length > 0 && (
-        <div className="max-w-6xl mx-auto mt-8">
-          <OtherCreatorProfiles profiles={otherProfiles} />
-        </div>
-      )}
     </PublicLayout>
   );
 }

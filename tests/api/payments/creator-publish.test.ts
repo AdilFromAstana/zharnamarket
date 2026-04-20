@@ -16,7 +16,12 @@ import {
 import { cityId } from "../refs";
 
 import { POST as publishCreator } from "@/app/api/payments/creators/[id]/publish/route";
-import { POST as webhook } from "@/app/api/payments/webhook/route";
+import { POST as webhookPost } from "@/app/api/payments/webhook/[provider]/route";
+
+// helper: в новом дизайне webhook — dynamic route с params.provider
+function webhook(req: Parameters<typeof webhookPost>[0]) {
+  return webhookPost(req, { params: Promise.resolve({ provider: "mock" }) });
+}
 
 // ─── Shared state ───────────────────────────────────────────────────────────
 

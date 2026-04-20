@@ -2,13 +2,49 @@
 
 import { useState } from "react";
 import { Modal } from "antd";
-import { LinkOutlined, EyeOutlined } from "@ant-design/icons";
-import { formatFollowers } from "@/lib/utils";
+import { LinkOutlined, HeartFilled, PlayCircleFilled } from "@ant-design/icons";
+import { formatFollowers, toDisplayThumbnailUrl } from "@/lib/utils";
 import { PLATFORM_COLORS } from "@/lib/constants";
 import { ENUM_TO_CATEGORY } from "@/lib/enum-maps";
 import type { CreatorProfile } from "@/lib/types/creator";
 
 type PortfolioItem = CreatorProfile["portfolio"][number];
+
+function resolveCategoryLabel(item: PortfolioItem): string | null {
+  const raw = item.category as unknown;
+  if (!raw) return null;
+  if (typeof raw === "string") return ENUM_TO_CATEGORY[raw] ?? raw;
+  if (typeof raw === "object" && raw !== null) {
+    const obj = raw as { label?: string; key?: string };
+    return obj.label ?? (obj.key ? ENUM_TO_CATEGORY[obj.key] ?? obj.key : null);
+  }
+  return null;
+}
+
+function ThumbnailMedia({ item }: { item: PortfolioItem }) {
+  const categoryLabel = resolveCategoryLabel(item);
+  const alt = item.description || categoryLabel || item.platform;
+  if (item.thumbnail) {
+    return (
+      /* eslint-disable-next-line @next/next/no-img-element */
+      <img
+        src={toDisplayThumbnailUrl(item.thumbnail) ?? ""}
+        alt={alt}
+        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+      />
+    );
+  }
+  return (
+    <div
+      className="w-full h-full flex items-center justify-center"
+      style={{
+        background: `linear-gradient(135deg, ${PLATFORM_COLORS[item.platform] ?? "#64748b"}, #1f2937)`,
+      }}
+    >
+      <PlayCircleFilled className="text-white/80 text-5xl" />
+    </div>
+  );
+}
 
 interface CreatorPortfolioSectionProps {
   portfolio: PortfolioItem[];
@@ -17,6 +53,10 @@ interface CreatorPortfolioSectionProps {
 const PORTFOLIO_LIMIT = 5;
 
 function PortfolioCard({ item }: { item: PortfolioItem }) {
+  const categoryLabel = resolveCategoryLabel(item);
+  const caption =
+    item.description?.trim() ||
+    (categoryLabel ? `${item.platform} · ${categoryLabel}` : item.platform);
   return (
     <a
       href={item.videoUrl}
@@ -25,15 +65,10 @@ function PortfolioCard({ item }: { item: PortfolioItem }) {
       className="group shrink-0 w-44 sm:w-48 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow snap-start"
     >
       <div className="aspect-[9/16] relative overflow-hidden bg-gray-100">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={item.thumbnail}
-          alt={
-            item.description ||
-            `${item.platform} · ${ENUM_TO_CATEGORY[item.category] ?? item.category}`
-          }
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-        />
+        <ThumbnailMedia item={item} />
+        {item.views ? (
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/10 pointer-events-none" />
+        ) : null}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
           <div className="opacity-0 group-hover:opacity-100 transition-opacity">
             <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-md">
@@ -47,19 +82,31 @@ function PortfolioCard({ item }: { item: PortfolioItem }) {
         >
           {item.platform}
         </div>
-        {item.views && (
-          <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded-md backdrop-blur-sm flex items-center gap-1">
-            <EyeOutlined /> {formatFollowers(item.views)}
+        {item.likes ? (
+          <div className="absolute top-2 right-2 bg-black/60 text-white text-[11px] px-1.5 py-0.5 rounded-md backdrop-blur-sm flex items-center gap-1">
+            <HeartFilled className="text-rose-400" />{" "}
+            {formatFollowers(item.likes)}
           </div>
-        )}
+        ) : null}
+        {item.views ? (
+          <div className="absolute bottom-2 left-2 text-white drop-shadow">
+            <div className="text-[10px] uppercase tracking-wider opacity-80 leading-none">
+              просмотров
+            </div>
+            <div className="text-2xl font-bold leading-tight">
+              {formatFollowers(item.views)}
+            </div>
+          </div>
+        ) : null}
       </div>
       <div className="p-2.5">
-        <span className="inline-flex items-center text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 mb-1">
-          {ENUM_TO_CATEGORY[item.category] ?? item.category}
-        </span>
+        {categoryLabel && (
+          <span className="inline-flex items-center text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 mb-1">
+            {categoryLabel}
+          </span>
+        )}
         <p className="text-xs text-gray-500 line-clamp-2 leading-tight">
-          {item.description ??
-            `${item.platform} · ${ENUM_TO_CATEGORY[item.category] ?? item.category}`}
+          {caption}
         </p>
       </div>
     </a>
@@ -67,6 +114,10 @@ function PortfolioCard({ item }: { item: PortfolioItem }) {
 }
 
 function PortfolioGridCard({ item }: { item: PortfolioItem }) {
+  const categoryLabel = resolveCategoryLabel(item);
+  const caption =
+    item.description?.trim() ||
+    (categoryLabel ? `${item.platform} · ${categoryLabel}` : item.platform);
   return (
     <a
       href={item.videoUrl}
@@ -75,15 +126,10 @@ function PortfolioGridCard({ item }: { item: PortfolioItem }) {
       className="group rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
     >
       <div className="aspect-[9/16] relative overflow-hidden bg-gray-100">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={item.thumbnail}
-          alt={
-            item.description ||
-            `${item.platform} · ${ENUM_TO_CATEGORY[item.category] ?? item.category}`
-          }
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-        />
+        <ThumbnailMedia item={item} />
+        {item.views ? (
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/10 pointer-events-none" />
+        ) : null}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
         <div
           className="absolute top-2 left-2 px-2 py-0.5 rounded text-xs font-medium text-white"
@@ -91,19 +137,31 @@ function PortfolioGridCard({ item }: { item: PortfolioItem }) {
         >
           {item.platform}
         </div>
-        {item.views && (
-          <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded-md backdrop-blur-sm flex items-center gap-1">
-            <EyeOutlined /> {formatFollowers(item.views)}
+        {item.likes ? (
+          <div className="absolute top-2 right-2 bg-black/60 text-white text-[11px] px-1.5 py-0.5 rounded-md backdrop-blur-sm flex items-center gap-1">
+            <HeartFilled className="text-rose-400" />{" "}
+            {formatFollowers(item.likes)}
           </div>
-        )}
+        ) : null}
+        {item.views ? (
+          <div className="absolute bottom-2 left-2 text-white drop-shadow">
+            <div className="text-[10px] uppercase tracking-wider opacity-80 leading-none">
+              просмотров
+            </div>
+            <div className="text-xl font-bold leading-tight">
+              {formatFollowers(item.views)}
+            </div>
+          </div>
+        ) : null}
       </div>
       <div className="p-2">
-        <span className="inline-flex items-center text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 mb-1">
-          {ENUM_TO_CATEGORY[item.category] ?? item.category}
-        </span>
+        {categoryLabel && (
+          <span className="inline-flex items-center text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 mb-1">
+            {categoryLabel}
+          </span>
+        )}
         <p className="text-xs text-gray-500 line-clamp-1 leading-tight">
-          {item.description ??
-            `${item.platform} · ${ENUM_TO_CATEGORY[item.category] ?? item.category}`}
+          {caption}
         </p>
       </div>
     </a>

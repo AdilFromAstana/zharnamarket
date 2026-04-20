@@ -8,7 +8,6 @@ import {
   MessageOutlined,
 } from "@ant-design/icons";
 import type { BudgetType } from "@/lib/types/ad";
-import type { PaymentMethod } from "@/lib/types/payment";
 
 export const PLATFORM_ICONS: Record<string, React.ReactNode> = {
   TikTok: <PlaySquareOutlined />,
@@ -34,7 +33,7 @@ export const BUDGET_TYPE_OPTIONS: {
     value: "per_views",
     icon: <EyeOutlined />,
     label: "За просмотры",
-    hint: "Вы платите зависимо от количества просмотров — договоритесь напрямую",
+    hint: "",
     placeholder: "Например: 5,000 ₸ за каждые 100,000 просмотров",
   },
   {
@@ -52,12 +51,5 @@ export const BUDGET_TYPE_OPTIONS: {
   },
 ];
 
-export const PROVIDER_PAYMENT_METHODS: {
-  id: PaymentMethod;
-  label: string;
-  desc: string;
-}[] = [
-  { id: "kaspi", label: "Kaspi Pay", desc: "Быстрая оплата через приложение" },
-  { id: "halyk", label: "Halyk Bank", desc: "Онлайн-оплата через Halyk" },
-  { id: "card", label: "Банковская карта", desc: "Visa / Mastercard / МИР" },
-];
+// PROVIDER_PAYMENT_METHODS удалён — методы берутся из usePaymentMethods()
+// hook, который дёргает /api/payments/methods

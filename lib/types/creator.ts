@@ -18,6 +18,7 @@ export interface PortfolioItem {
   category: ContentCategory;
   description: string | null;
   views: number | null;
+  likes: number | null;
 }
 
 export interface PriceItem {
@@ -77,9 +78,17 @@ export interface CreatorProfile {
   reviewCount: number;
   // Статистика
   contactClickCount: number;
+  viewCount: number;
   stats?: CreatorStats;
   avatarColor?: string | null;
   boosts?: BoostType[];
+  activeBoostDetails?: ActiveBoostDetail[];
+}
+
+export interface ActiveBoostDetail {
+  boostType: BoostType;
+  activatedAt: string;
+  expiresAt: string;
 }
 
 // ─── Отзывы ──────────────────────────────────────────────────────────────────

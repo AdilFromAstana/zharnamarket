@@ -66,7 +66,7 @@ export default function CreatorPreviewPage() {
           type="warning"
           showIcon
           className="mb-4 rounded-xl"
-          message="Предварительный просмотр"
+          title="Предварительный просмотр"
           description={
             <div className="flex items-center justify-between flex-wrap gap-2">
               <span>Этот профиль ещё не опубликован. Так он будет выглядеть для других пользователей.</span>

@@ -1,4 +1,5 @@
 import type { BoostType } from "@prisma/client";
+import type { BoostOption } from "@/lib/types/payment";
 
 /**
  * Числовой приоритет буста — используется при выборе
@@ -40,4 +41,36 @@ export function shouldRaise(
   if (!raisedAt) return true;
   const interval = RAISE_INTERVALS_MS[boostType];
   return now.getTime() - raisedAt.getTime() >= interval;
+}
+
+/**
+ * Pro-rated discount при апгрейде с младшего тира на старший.
+ * Считает остаток от активного младшего буста и возвращает его как скидку.
+ *
+ * @param existingBoost активный буст младшего тира (с boostType и expiresAt)
+ * @param newBoostOption тариф, на который пользователь апгрейдит
+ * @param allOptions справочник всех BoostOption (для поиска цены/дней старого тира)
+ * @param now текущее время
+ * @returns сумма скидки в тенге. 0 если скидки нет. Кап на цену нового тарифа.
+ */
+export function computeProRatedDiscount(
+  existingBoost: { boostType: BoostType; expiresAt: Date } | null | undefined,
+  newBoostOption: BoostOption,
+  allOptions: BoostOption[],
+  now: Date = new Date(),
+): number {
+  if (!existingBoost) return 0;
+  if (existingBoost.boostType === newBoostOption.id) return 0;
+  const existingOpt = allOptions.find((b) => b.id === existingBoost.boostType);
+  if (!existingOpt) return 0;
+  if (existingOpt.price >= newBoostOption.price) return 0; // апгрейд только от дешёвого к дорогому
+  const totalMs = existingOpt.days * 24 * 60 * 60 * 1000;
+  const remainingMs = Math.max(
+    0,
+    existingBoost.expiresAt.getTime() - now.getTime(),
+  );
+  const remainingFraction = Math.min(1, remainingMs / totalMs);
+  const proRated = Math.round(existingOpt.price * remainingFraction);
+  // Кап на цену нового тарифа — скидка не может превышать его стоимость
+  return Math.min(proRated, newBoostOption.price);
 }

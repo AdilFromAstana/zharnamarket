@@ -1,10 +1,16 @@
 import type { Ad } from "@/lib/types/ad";
 import type { BoostType } from "@/lib/types/payment";
 
+const toIso = (v: string | Date | null | undefined): string | null => {
+  if (!v) return null;
+  return typeof v === "string" ? v : v.toISOString();
+};
+
 /**
  * Prisma возвращает плоскую структуру с полями contactTelegram, viewCount и т.д.
  * Тип Ad ожидает вложенные объекты contacts и metadata.
  * Этот маппер приводит raw-ответ Prisma к типу Ad.
+ * Безопасен и для серверных объектов (Date), и для сериализованных (ISO-строки).
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function mapPrismaAdToAd(raw: any): Ad {
@@ -37,16 +43,25 @@ export function mapPrismaAdToAd(raw: any): Ad {
     boosts: Array.isArray(raw.boosts)
       ? raw.boosts.map((b: { boostType: BoostType }) => b.boostType)
       : [],
-    publishedAt: raw.publishedAt ? raw.publishedAt.toISOString() : null,
-    expiresAt: raw.expiresAt ? raw.expiresAt.toISOString() : null,
+    activeBoostDetails: Array.isArray(raw.boosts)
+      ? raw.boosts.map(
+          (b: {
+            boostType: BoostType;
+            activatedAt?: string | Date;
+            expiresAt: string | Date;
+          }) => ({
+            boostType: b.boostType,
+            activatedAt: toIso(b.activatedAt) ?? new Date().toISOString(),
+            expiresAt: toIso(b.expiresAt) ?? new Date().toISOString(),
+          }),
+        )
+      : [],
+    publishedAt: toIso(raw.publishedAt),
+    expiresAt: toIso(raw.expiresAt),
     status: raw.status,
     metadata: {
-      createdAt: raw.createdAt
-        ? raw.createdAt.toISOString()
-        : new Date().toISOString(),
-      updatedAt: raw.updatedAt
-        ? raw.updatedAt.toISOString()
-        : new Date().toISOString(),
+      createdAt: toIso(raw.createdAt) ?? new Date().toISOString(),
+      updatedAt: toIso(raw.updatedAt) ?? new Date().toISOString(),
       viewCount: raw.viewCount ?? 0,
       contactClickCount: raw.contactClickCount ?? 0,
     },
@@ -63,11 +78,7 @@ export function mapPrismaAdToAd(raw: any): Ad {
     minViews: raw.minViews ?? null,
     maxViewsPerCreator: raw.maxViewsPerCreator ?? null,
     totalBudget: raw.totalBudget ?? null,
-    submissionDeadline: raw.submissionDeadline
-      ? (typeof raw.submissionDeadline === "string"
-          ? raw.submissionDeadline
-          : raw.submissionDeadline.toISOString())
-      : null,
+    submissionDeadline: toIso(raw.submissionDeadline),
     escrowAccount: raw.escrowAccount ?? null,
     applicationsCount: raw._count?.applications ?? undefined,
     submissionsCount: raw._count?.submissions ?? undefined,

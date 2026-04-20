@@ -47,10 +47,26 @@ export function mapCreatorFromApi(c: any): CreatorProfile {
     averageRating: c.averageRating ?? 0,
     reviewCount: c.reviewCount ?? 0,
     contactClickCount: c.contactClickCount ?? 0,
+    viewCount: c._count?.views ?? c.viewCount ?? 0,
     stats: c.stats ?? undefined,
     avatarColor: c.user?.avatarColor ?? c.avatarColor ?? null,
     boosts: Array.isArray(c.boosts)
       ? c.boosts.map((b: { boostType: BoostType }) => b.boostType)
+      : [],
+    activeBoostDetails: Array.isArray(c.boosts)
+      ? c.boosts.map(
+          (b: { boostType: BoostType; activatedAt: string | Date; expiresAt: string | Date }) => ({
+            boostType: b.boostType,
+            activatedAt:
+              typeof b.activatedAt === "string"
+                ? b.activatedAt
+                : b.activatedAt.toISOString(),
+            expiresAt:
+              typeof b.expiresAt === "string"
+                ? b.expiresAt
+                : b.expiresAt.toISOString(),
+          }),
+        )
       : [],
   };
 }

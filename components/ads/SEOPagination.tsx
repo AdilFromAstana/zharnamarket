@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface SEOPaginationProps {
   currentPage: number;
   totalPages: number;
-  /** Base path for link-based navigation (default: "/ads") */
+  /** Base path override. If omitted, current pathname is used — this keeps pagination
+   *  on pretty URLs (e.g. `/ads/almaty?page=2`) instead of resetting to the base route. */
   baseUrl?: string;
   /** Current URL search params — preserved in pagination hrefs (e.g. filters) */
   searchParams?: Record<string, string>;
@@ -25,10 +27,13 @@ interface SEOPaginationProps {
 export default function SEOPagination({
   currentPage,
   totalPages,
-  baseUrl = "/ads",
+  baseUrl,
   searchParams,
   onPageChange,
 }: SEOPaginationProps) {
+  const pathname = usePathname();
+  const effectiveBase = baseUrl ?? pathname ?? "/ads";
+
   if (totalPages <= 1) return null;
 
   const isFirstPage = currentPage <= 1;
@@ -40,7 +45,7 @@ export default function SEOPagination({
     if (page > 1) params.set("page", String(page));
     else params.delete("page");
     const qs = params.toString();
-    return qs ? `${baseUrl}?${qs}` : baseUrl;
+    return qs ? `${effectiveBase}?${qs}` : effectiveBase;
   };
 
   /** Generate visible page numbers with ellipsis gaps */

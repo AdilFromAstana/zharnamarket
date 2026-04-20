@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Badge, Tag, Dropdown, Button } from "antd";
+import type { BadgeProps } from "antd";
 import {
   EyeOutlined,
   EditOutlined,
@@ -12,6 +13,7 @@ import {
   EllipsisOutlined,
   RocketOutlined,
   MessageOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
 import {
   AD_STATUS_COLORS,
@@ -24,16 +26,22 @@ import {
 import BudgetTypeIcon from "@/components/ui/BudgetTypeIcon";
 import { formatDate, daysUntilExpiry, formatBudgetPreview } from "@/lib/utils";
 import type { Ad } from "@/lib/types/ad";
-import type { BoostType } from "@/lib/types/payment";
+import {
+  formatDaysLeft,
+  getTopBoost,
+} from "@/app/ads/manage/_lib/boost";
+import { track } from "@/lib/analytics";
 
 interface AdManagementCardProps {
   ad: Ad;
   onAction: (adId: string, action: string) => void;
+  onRepublish?: (ad: Ad) => void;
 }
 
 export default function AdManagementCard({
   ad,
   onAction,
+  onRepublish,
 }: AdManagementCardProps) {
   const menuItems = [
     {
@@ -47,17 +55,6 @@ export default function AdManagementCard({
       label: <Link href={`/ads/${ad.id}/edit`}>Редактировать</Link>,
     },
     { type: "divider" as const },
-    ...(ad.status === "active"
-      ? [
-          {
-            key: "boost",
-            icon: <RocketOutlined />,
-            label: (
-              <Link href={`/ads/${ad.id}/boost`}>Продвинуть объявление</Link>
-            ),
-          },
-        ]
-      : []),
     ...(ad.status === "active"
       ? [
           {
@@ -94,7 +91,8 @@ export default function AdManagementCard({
     },
   ];
 
-  const hasBoosts = ad.boosts && ad.boosts.length > 0;
+  const topBoost = getTopBoost(ad.activeBoostDetails);
+  const hasActiveBoost = (ad.activeBoostDetails ?? []).length > 0;
 
   return (
     <div className="bg-white border border-gray-100 rounded-xl p-4 mb-3 shadow-sm">
@@ -123,18 +121,17 @@ export default function AdManagementCard({
         <Tag color={BUDGET_TYPE_COLORS[ad.budgetType]} className="m-0">
           <BudgetTypeIcon type={ad.budgetType} size={11} className="shrink-0 inline mr-1" />{BUDGET_TYPE_LABELS[ad.budgetType]}
         </Tag>
-        {/* Бейджи активных бустов */}
-        {hasBoosts &&
-          ad.boosts!.map((boost: BoostType) => (
-            <Tag
-              key={boost}
-              color={BOOST_COLORS[boost]}
-              className="m-0"
-              icon={<RocketOutlined />}
-            >
-              {BOOST_LABELS[boost]}
-            </Tag>
-          ))}
+        {/* Топ-буст с остатком дней */}
+        {topBoost && (
+          <Tag
+            color={BOOST_COLORS[topBoost.boostType]}
+            className="m-0"
+            icon={<RocketOutlined />}
+          >
+            {BOOST_LABELS[topBoost.boostType]} ·{" "}
+            {formatDaysLeft(topBoost.expiresAt)}
+          </Tag>
+        )}
       </div>
 
       {/* Бюджет для блогера */}
@@ -150,7 +147,7 @@ export default function AdManagementCard({
       {/* Статус */}
       <div className="flex items-center gap-3 mb-3">
         <Badge
-          status={AD_STATUS_COLORS[ad.status] as any}
+          status={AD_STATUS_COLORS[ad.status] as BadgeProps["status"]}
           text={
             <span className="text-sm font-medium">
               {AD_STATUS_LABELS[ad.status]}
@@ -164,15 +161,53 @@ export default function AdManagementCard({
         )}
       </div>
 
-      {/* Кнопка «Продвинуть» для активных без буста */}
-      {ad.status === "active" && !hasBoosts && (
-        <Link href={`/ads/${ad.id}/boost`} className="block mb-3">
-          <button className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-dashed border-blue-300 text-blue-600 text-xs font-medium hover:bg-blue-50 transition-colors">
-            <RocketOutlined />
-            Продвинуть объявление
-          </button>
+      {/* Кнопка «Продвинуть»/«Продлить буст» для активных */}
+      {ad.status === "active" && (
+        <Link
+          href={`/ads/${ad.id}/boost`}
+          className="block mb-3"
+          onClick={() =>
+            track("boost_cta_click", {
+              entity: "ad",
+              entity_id: ad.id,
+              placement: "ads_manage_mobile",
+              has_active_boost: hasActiveBoost,
+            })
+          }
+        >
+          <Button
+            type="primary"
+            icon={<RocketOutlined />}
+            block
+            style={{ background: "#7c3aed", borderColor: "#7c3aed" }}
+          >
+            {hasActiveBoost ? "Продлить буст" : "Продвинуть объявление"}
+          </Button>
         </Link>
       )}
+
+      {/* Кнопка «Возобновить публикацию» для expired */}
+      {ad.status === "expired" &&
+        ad.paymentMode !== "escrow" &&
+        onRepublish && (
+          <Button
+            type="primary"
+            icon={<ReloadOutlined />}
+            block
+            onClick={() => {
+              track("republish_cta_click", {
+                ad_id: ad.id,
+                placement: "ads_manage_mobile",
+                mode: "expired",
+              });
+              onRepublish(ad);
+            }}
+            className="!mb-3"
+            style={{ background: "#3b82f6", borderColor: "#3b82f6" }}
+          >
+            Возобновить публикацию
+          </Button>
+        )}
 
       {/* Статистика + дата */}
       <div className="flex items-center justify-between text-sm text-gray-500">

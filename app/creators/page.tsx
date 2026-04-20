@@ -1,6 +1,19 @@
 import PublicLayout from "@/components/layout/PublicLayout";
 import CreatorsListClient from "./CreatorsListClient";
-import JsonLd, { breadcrumbSchema, itemListSchema } from "@/components/seo/JsonLd";
+import JsonLd, {
+  breadcrumbSchema,
+  itemListSchema,
+  faqSchema,
+} from "@/components/seo/JsonLd";
+import {
+  buildCreatorsMeta,
+  cityLabel,
+  cityPrepLabel,
+  platformLabel,
+} from "@/lib/seo/filter-labels";
+import { CREATORS_LISTING_FAQ } from "@/lib/seo/faq";
+import { buildCreatorsIntro } from "@/lib/seo/listing-intro";
+import ListingSeoText from "@/components/seo/ListingSeoText";
 
 export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
@@ -12,7 +25,7 @@ import {
   checkLength,
   LIMITS,
 } from "@/lib/validation";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { COOKIE_NAMES } from "@/lib/cookies";
 import { distributeBoostedByTier, countBoostedBeforePage } from "@/lib/interleave-boosts";
 import { mapCreatorFromApi } from "@/lib/mappers/creator";
@@ -47,28 +60,51 @@ export async function generateMetadata({
 }: Props): Promise<Metadata> {
   const params = await searchParams;
   const page = Math.max(1, safeInt(params.page ?? null, 1));
-  const suffix = page > 1 ? ` — Страница ${page}` : "";
 
-  const canonicalParams = new URLSearchParams();
-  if (params.city) canonicalParams.set("city", params.city);
-  if (params.platform) canonicalParams.set("platform", params.platform);
-  if (params.category) canonicalParams.set("category", params.category);
-  if (params.sortBy) canonicalParams.set("sortBy", params.sortBy);
-  if (page > 1) canonicalParams.set("page", String(page));
-  const qs = canonicalParams.toString();
-  const canonical = qs
-    ? `https://zharnamarket.kz/creators?${qs}`
-    : "https://zharnamarket.kz/creators";
+  const cities = parseCSV(params.city);
+  const platforms = parseCSV(params.platform);
+  const categories = parseCSV(params.category);
+
+  const { title, description } = buildCreatorsMeta({
+    cities,
+    platforms,
+    categories,
+    page,
+  });
+
+  // Pretty URL (rewritten by proxy.ts) → use it as canonical.
+  const h = await headers();
+  const prettyPath = h.get("x-pretty-path");
+
+  let canonical: string;
+  if (prettyPath) {
+    const pageSuffix = page > 1 ? `?page=${page}` : "";
+    canonical = `https://zharnamarket.kz${prettyPath}${pageSuffix}`;
+  } else {
+    const canonicalParams = new URLSearchParams();
+    if (params.city) canonicalParams.set("city", params.city);
+    if (params.platform) canonicalParams.set("platform", params.platform);
+    if (params.category) canonicalParams.set("category", params.category);
+    if (params.sortBy) canonicalParams.set("sortBy", params.sortBy);
+    if (page > 1) canonicalParams.set("page", String(page));
+    const qs = canonicalParams.toString();
+    canonical = qs
+      ? `https://zharnamarket.kz/creators?${qs}`
+      : "https://zharnamarket.kz/creators";
+  }
+
+  const hasSearch = !!params.search?.trim();
 
   return {
-    title: `Каталог авторов видеоконтента${suffix} — Zharnamarket`,
-    description: `Найди авторов видеорекламы в Казахстане: вирусные ролики, обзоры, сторителлинг, продакт-плейсмент, TikTok, Instagram, YouTube. Прямой контакт без посредников.${suffix}`,
+    title,
+    description,
     openGraph: {
-      title: `Каталог авторов видеоконтента${suffix} — Zharnamarket`,
-      description: `Найди авторов видеорекламы в Казахстане: вирусные ролики, обзоры, сторителлинг, продакт-плейсмент. Прямой контакт без посредников.${suffix}`,
+      title,
+      description,
       type: "website",
     },
     alternates: { canonical },
+    ...(hasSearch && { robots: { index: false, follow: true } }),
   };
 }
 
@@ -309,6 +345,10 @@ export default async function CreatorsPage({ searchParams }: Props) {
   const params = await searchParams;
   const page = parsePage(params.page);
 
+  // Pretty URL (rewritten by proxy.ts) — powers breadcrumb and SEO page nav
+  const h = await headers();
+  const prettyPath = h.get("x-pretty-path");
+
   // Parse comma-separated DB codes from URL
   const cities = parseCSV(params.city);
   const platforms = parseCSV(params.platform);
@@ -340,28 +380,45 @@ export default async function CreatorsPage({ searchParams }: Props) {
   if (params.sortBy) initialFilters.sortBy = params.sortBy as CreatorFilters["sortBy"];
   if (params.search) initialFilters.search = params.search;
 
+  const breadcrumbs = [
+    { name: "Главная", url: "https://zharnamarket.kz" },
+    { name: "Каталог креаторов", url: "https://zharnamarket.kz/creators" },
+  ];
+  let h1 = "Каталог креаторов";
+  if (prettyPath && cities.length === 1) {
+    const label = cityLabel(cities[0]);
+    breadcrumbs.push({
+      name: label,
+      url: `https://zharnamarket.kz${prettyPath}`,
+    });
+    h1 = `Авторы видеоконтента в ${cityPrepLabel(cities[0])}`;
+  } else if (prettyPath && platforms.length === 1) {
+    const label = platformLabel(platforms[0]);
+    breadcrumbs.push({
+      name: label,
+      url: `https://zharnamarket.kz${prettyPath}`,
+    });
+    h1 = `Авторы ${label}`;
+  }
+
   return (
     <PublicLayout>
       <JsonLd
         data={[
-          breadcrumbSchema([
-            { name: "Главная", url: "https://zharnamarket.kz" },
-            { name: "Каталог креаторов", url: "https://zharnamarket.kz/creators" },
-          ]),
+          breadcrumbSchema(breadcrumbs),
           itemListSchema(
             "Каталог авторов видеоконтента — Zharnamarket",
-            creators.slice(0, 10).map((c, i) => ({
+            creators.slice(0, 20).map((c, i) => ({
               url: `https://zharnamarket.kz/creators/${c.id}`,
               name: c.fullName,
               position: i + 1,
             })),
           ),
+          faqSchema(CREATORS_LISTING_FAQ),
         ]}
       />
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Каталог креаторов
-        </h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">{h1}</h1>
         <p className="text-gray-500">
           Найди подходящего автора и свяжись напрямую
         </p>
@@ -375,6 +432,11 @@ export default async function CreatorsPage({ searchParams }: Props) {
         initialFacets={facets}
         pageSize={PAGE_SIZE}
       />
+      {page === 1 && (
+        <ListingSeoText
+          content={buildCreatorsIntro({ cities, platforms, categories })}
+        />
+      )}
     </PublicLayout>
   );
 }

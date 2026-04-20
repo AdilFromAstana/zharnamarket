@@ -10,7 +10,7 @@ export default function StepHeader({
   stepLabels,
 }: StepHeaderProps) {
   return (
-    <div className="sticky top-14 md:top-16 lg:static z-10 bg-white -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 pt-2 sm:pt-4 pb-3 sm:pb-4 mb-3 sm:mb-4 border-b border-gray-100 shadow-sm lg:shadow-none">
+    <div className="sticky top-14 md:top-16 lg:static z-10 bg-white -mx-4 px-4 sm:-mx-6 sm:px-6 lg:mx-0 lg:px-6 pt-2 sm:pt-4 pb-3 sm:pb-4 lg:pt-6 lg:pb-6 mb-3 sm:mb-4 lg:mb-6 border-b border-gray-100 shadow-sm lg:border lg:border-gray-200 lg:shadow-none lg:rounded-2xl">
       {/* Тонкий прогресс-бар — только на sm+ */}
       {step > 0 && (
         <div className="hidden sm:flex gap-1.5 mb-3">
@@ -43,10 +43,10 @@ export default function StepHeader({
       {/* Заголовок + dot-индикатор */}
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-widest mb-0.5">
+          <p className="sm:hidden text-[11px] text-gray-400 font-semibold uppercase tracking-widest mb-0.5">
             {step === 0 ? "Один раз" : `Шаг ${step} из ${stepLabels.length}`}
           </p>
-          <h1 className="text-lg font-bold text-gray-900 leading-tight">
+          <h1 className="text-lg lg:text-xl font-bold text-gray-900 leading-tight">
             {stepTitle}
           </h1>
         </div>

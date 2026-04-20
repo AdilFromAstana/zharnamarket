@@ -179,7 +179,7 @@ describe("POST /api/balance/withdraw", () => {
     expect(body.amount).toBe(2_000);
     expect(body.method).toBe("kaspi");
     expect(body.details).toBe("+77009998877");
-    expect(body.status).toBe("pending");
+    expect(body.status).toBe("processing");
 
     // Verify balance deducted
     const balAfter = await prisma.creatorBalance.findUnique({ where: { userId } });
@@ -190,7 +190,7 @@ describe("POST /api/balance/withdraw", () => {
     const wr = await prisma.withdrawalRequest.findUnique({ where: { id: body.id } });
     expect(wr).not.toBeNull();
     expect(wr!.amount).toBe(2_000);
-    expect(wr!.status).toBe("pending");
+    expect(wr!.status).toBe("processing");
     expect(wr!.userId).toBe(userId);
 
     // Verify transaction record

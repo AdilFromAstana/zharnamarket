@@ -95,6 +95,8 @@ export interface Ad {
    * Бусты докупаются отдельно из ЛК после публикации.
    */
   boosts?: BoostType[];
+  /** Активные бусты с датами активации/окончания — для отображения остатка дней. */
+  activeBoostDetails?: ActiveBoostDetail[];
   publishedAt: string | null;
   expiresAt: string | null;
   status: AdStatus;
@@ -116,6 +118,12 @@ export interface Ad {
   } | null;
   applicationsCount?: number;
   submissionsCount?: number;
+}
+
+export interface ActiveBoostDetail {
+  boostType: BoostType;
+  activatedAt: string;
+  expiresAt: string;
 }
 
 /**

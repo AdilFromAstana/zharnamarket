@@ -11,6 +11,7 @@ import {
   InputNumber,
   Space,
   Spin,
+  Button,
 } from "antd";
 import {
   ArrowRightOutlined,
@@ -22,6 +23,7 @@ import {
   EyeOutlined,
   PercentageOutlined,
   MessageOutlined,
+  RocketOutlined,
 } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
 import PublicLayout from "@/components/layout/PublicLayout";
@@ -56,7 +58,7 @@ const BUDGET_TYPE_OPTIONS: {
     value: "per_views",
     icon: <EyeOutlined />,
     label: "За просмотры",
-    hint: "Вы платите зависимо от количества просмотров — договоритесь напрямую",
+    hint: "",
     placeholder: "Например: 5,000 ₸ за каждые 100,000 просмотров",
   },
   {
@@ -93,6 +95,8 @@ export default function AdEditPage() {
   const [platform, setPlatform] = useState<string>("");
   const [budgetType, setBudgetType] = useState<BudgetType | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [isActive, setIsActive] = useState(false);
+  const [hasActiveBoost, setHasActiveBoost] = useState(false);
 
   // Загружаем данные объявления и предзаполняем форму через реальный API
   useEffect(() => {
@@ -104,6 +108,13 @@ export default function AdEditPage() {
       .then((ad) => {
         setPlatform((ad.platform as string) ?? "");
         setBudgetType((ad.budgetType as BudgetType) ?? null);
+        setIsActive(ad.status === "active");
+        const boosts =
+          (ad.boosts as Array<{ expiresAt: string | Date }> | undefined) ?? [];
+        const active = boosts.filter(
+          (b) => new Date(b.expiresAt).getTime() >= Date.now(),
+        );
+        setHasActiveBoost(active.length > 0);
         form.setFieldsValue({
           title: ad.title,
           platform: ad.platform,
@@ -220,6 +231,31 @@ export default function AdEditPage() {
           </div>
         </div>
       </div>
+
+      {isActive && !hasActiveBoost && (
+        <div className="max-w-lg mx-auto mb-4 rounded-2xl border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-fuchsia-50 p-4 flex items-center gap-3">
+          <div className="w-10 h-10 shrink-0 rounded-full bg-purple-600 flex items-center justify-center">
+            <RocketOutlined className="text-white text-lg" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-gray-900 text-sm sm:text-base leading-tight">
+              Обновили объявление? Продвиньте его
+            </div>
+            <div className="text-xs sm:text-sm text-gray-600 mt-0.5">
+              Поднимите в топ ленты — больше креаторов откликнутся
+            </div>
+          </div>
+          <Link href={`/ads/${id}/boost`} className="shrink-0">
+            <Button
+              type="primary"
+              icon={<RocketOutlined />}
+              style={{ background: "#7c3aed", borderColor: "#7c3aed" }}
+            >
+              Продвинуть
+            </Button>
+          </Link>
+        </div>
+      )}
 
       <div className="max-w-lg mx-auto pb-28">
         <Form form={form} name="edit_ad" layout="vertical" size="large">
@@ -394,12 +430,15 @@ export default function AdEditPage() {
 
             {budgetType && (
               <div className="mb-4">
-                <div className="p-3 bg-gray-50 rounded-lg text-xs text-gray-500 mb-3">
-                  {
-                    BUDGET_TYPE_OPTIONS.find((o) => o.value === budgetType)
-                      ?.hint
-                  }
-                </div>
+                {BUDGET_TYPE_OPTIONS.find((o) => o.value === budgetType)
+                  ?.hint && (
+                  <div className="p-3 bg-gray-50 rounded-lg text-xs text-gray-500 mb-3">
+                    {
+                      BUDGET_TYPE_OPTIONS.find((o) => o.value === budgetType)
+                        ?.hint
+                    }
+                  </div>
+                )}
 
                 {budgetType === "fixed" && (
                   <div className="flex gap-3 items-center">

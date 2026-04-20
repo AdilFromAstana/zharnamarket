@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Tag, Empty, Pagination } from "antd";
 import {
   WalletOutlined,
@@ -14,7 +14,7 @@ import {
 } from "@ant-design/icons";
 import { useSearchParams } from "next/navigation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { MIN_WITHDRAWAL_AMOUNT } from "@/lib/constants";
+import { MIN_WITHDRAWAL_AMOUNT, SHOW_WITHDRAWAL_UI } from "@/lib/constants";
 import { useBalanceFull, useInvalidateBalance } from "@/hooks/useBalance";
 import TopupDrawer from "@/components/balance/TopupDrawer";
 import WithdrawDrawer from "@/components/balance/WithdrawDrawer";
@@ -106,6 +106,14 @@ function BalanceSkeleton() {
 }
 
 export default function BalancePage() {
+  return (
+    <Suspense fallback={<BalanceSkeleton />}>
+      <BalancePageInner />
+    </Suspense>
+  );
+}
+
+function BalancePageInner() {
   useRequireAuth();
   const searchParams = useSearchParams();
   const [page, setPage] = useState(1);
@@ -200,18 +208,19 @@ export default function BalancePage() {
         </button>
 
         {/* Вывести — secondary text link */}
-        {canWithdraw ? (
-          <button
-            onClick={() => setWithdrawOpen(true)}
-            className="block w-full text-center text-sm text-gray-500 hover:text-gray-700 mt-3 transition-colors"
-          >
-            Вывести средства
-          </button>
-        ) : (
-          <p className="text-xs text-gray-400 text-center mt-3">
-            Минимум для вывода: {MIN_WITHDRAWAL_AMOUNT.toLocaleString("ru")} ₸
-          </p>
-        )}
+        {SHOW_WITHDRAWAL_UI &&
+          (canWithdraw ? (
+            <button
+              onClick={() => setWithdrawOpen(true)}
+              className="block w-full text-center text-sm text-gray-500 hover:text-gray-700 mt-3 transition-colors"
+            >
+              Вывести средства
+            </button>
+          ) : (
+            <p className="text-xs text-gray-400 text-center mt-3">
+              Минимум для вывода: {MIN_WITHDRAWAL_AMOUNT.toLocaleString("ru")} ₸
+            </p>
+          ))}
       </div>
 
       {/* ── Empty state for new users ─────────────────── */}

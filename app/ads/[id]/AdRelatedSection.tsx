@@ -3,6 +3,7 @@ import { Button } from "antd";
 import { ArrowRightOutlined } from "@ant-design/icons";
 import type { Ad } from "@/lib/types/ad";
 import { ENUM_TO_CATEGORY } from "@/lib/enum-maps";
+import { buildPrettyPath } from "@/lib/seo/pretty-slugs";
 import RelatedAdCard from "@/components/ads/RelatedAdCard";
 import AdCard from "@/components/ads/AdCard";
 
@@ -16,6 +17,12 @@ export default function AdRelatedSection({
   relatedAds,
 }: AdRelatedSectionProps) {
   if (relatedAds.length === 0) return null;
+
+  // Prefer pretty URL for SEO/internal-linking; fall back to multi-filter query.
+  const prettyHref = buildPrettyPath("/ads", { platforms: [ad.platform] });
+  const seeAllHref =
+    prettyHref ??
+    `/ads?platform=${encodeURIComponent(ad.platform)}&category=${encodeURIComponent(ad.category)}`;
 
   return (
     <div className="mt-8 w-full lg:w-8/12">
@@ -31,9 +38,7 @@ export default function AdRelatedSection({
               ad.category}
           </p>
         </div>
-        <Link
-          href={`/ads?platform=${encodeURIComponent(ad.platform)}&category=${encodeURIComponent(ad.category)}`}
-        >
+        <Link href={seeAllHref}>
           <Button
             type="text"
             size="small"

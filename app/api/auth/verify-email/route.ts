@@ -4,6 +4,7 @@ import { signAccessToken, signRefreshToken, badRequest, serverError } from "@/li
 import { setAuthCookies } from "@/lib/cookies";
 import { createSession } from "@/lib/sessions";
 import { hashCode } from "@/lib/verification";
+import { sendWelcomeEmail } from "@/lib/email";
 
 // ─── Rate limiter: 10 попыток / 15 мин на IP ───────────────────────────────
 const RATE_LIMIT_WINDOW = 15 * 60 * 1000;
@@ -116,6 +117,15 @@ export async function POST(req: NextRequest) {
         emailVerificationExpires: null,
       },
     });
+
+    // Приветственное письмо. Fire-and-forget — SMTP-сбой не должен валить логин.
+    // Отправляем только при первой верификации (user.emailVerified был false
+    // до UPDATE — ранний return выше отсекает повторные случаи).
+    if (user.email) {
+      sendWelcomeEmail(user.email, { name: user.name }).catch((err) => {
+        console.error("[verify-email] welcome email failed:", err);
+      });
+    }
 
     // Выдаём JWT токены
     const [accessToken, refreshToken] = await Promise.all([

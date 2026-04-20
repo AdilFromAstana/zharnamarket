@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserId, unauthorized, badRequest, serverError } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { sendAppealResolvedEmail } from "@/lib/email";
 
 /**
  * POST /api/admin/appeals/[id]/resolve — Рассмотреть апелляцию.
@@ -30,7 +31,14 @@ export async function POST(
 
     const appeal = await prisma.appeal.findUnique({
       where: { id: appealId },
-      include: { submission: true },
+      include: {
+        submission: {
+          include: {
+            ad: { select: { title: true } },
+            creator: { select: { email: true } },
+          },
+        },
+      },
     });
 
     if (!appeal) return badRequest("Апелляция не найдена");
@@ -51,6 +59,18 @@ export async function POST(
       await prisma.videoSubmission.update({
         where: { id: appeal.submissionId },
         data: { status: "submitted" },
+      });
+    }
+
+    // Уведомление креатору. Fire-and-forget.
+    if (appeal.submission.creator?.email) {
+      sendAppealResolvedEmail(appeal.submission.creator.email, {
+        taskTitle: appeal.submission.ad?.title ?? "(без названия)",
+        decision,
+        comment: comment?.trim() ?? null,
+        submissionId: appeal.submissionId,
+      }).catch((err) => {
+        console.error("[resolve] creator email failed:", err);
       });
     }
 

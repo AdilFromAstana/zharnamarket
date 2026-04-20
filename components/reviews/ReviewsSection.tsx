@@ -142,6 +142,27 @@ export default function ReviewsSection({
     !hasExistingReview &&
     hasContactInteraction;
 
+  // Компактный пустой state — не занимаем пол-экрана, если отзывов нет и писать некому
+  if (!loading && total === 0 && !canWriteReview) {
+    return (
+      <div className="md:bg-white md:rounded-2xl md:border md:border-gray-200 px-4 md:px-5 py-3 flex items-center gap-3">
+        <MessageOutlined className="text-gray-400 text-lg shrink-0" />
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-gray-700">
+            Отзывов пока нет
+          </div>
+          <div className="text-xs text-gray-500 leading-snug">
+            {isProfileOwner
+              ? "Ждём первых откликов от заказчиков"
+              : !isLoggedIn
+                ? "Авторизуйтесь и свяжитесь с креатором, чтобы оставить первый отзыв"
+                : "Свяжитесь с креатором — после контакта сможете оставить отзыв"}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="md:bg-white md:rounded-2xl md:border md:border-gray-200 md:p-6">
       <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">

@@ -9,6 +9,7 @@ import CreatorFiltersComponent from "@/components/creators/CreatorFilters";
 import SEOPagination from "@/components/ads/SEOPagination";
 import type { CreatorFilters, CreatorFacets, CreatorProfile } from "@/lib/types/creator";
 import { mapCreatorFromApi } from "@/lib/mappers/creator";
+import { buildPrettyPath } from "@/lib/seo/pretty-slugs";
 
 const EMPTY_FACETS: CreatorFacets = {
   platform: {},
@@ -35,8 +36,29 @@ function formatCreatorCount(n: number): string {
   return `${formatted} ${word}`;
 }
 
-/** Build URL string from filters + page (DB codes, comma-separated). */
+/** Build URL string from filters + page (DB codes, comma-separated).
+ *  Emits a pretty SEO URL (`/creators/almaty`) when exactly one filter dimension
+ *  with a single value is selected and that value maps to a known slug.
+ *  Falls back to `/creators?city=...` for multi-select combinations.
+ */
 function buildURL(filters: CreatorFilters, page: number): string {
+  const hasOnlyPrettyDims =
+    !filters.category?.length &&
+    !filters.availability?.length &&
+    !filters.maxRate &&
+    !filters.verified &&
+    !filters.minRating &&
+    !filters.sortBy &&
+    !filters.search;
+
+  if (hasOnlyPrettyDims) {
+    const pretty = buildPrettyPath("/creators", {
+      cities: filters.city ?? [],
+      platforms: filters.platform ?? [],
+    });
+    if (pretty) return page > 1 ? `${pretty}?page=${page}` : pretty;
+  }
+
   const params = new URLSearchParams();
   if (filters.city?.length) params.set("city", filters.city.join(","));
   if (filters.platform?.length) params.set("platform", filters.platform.join(","));
@@ -309,7 +331,6 @@ export default function CreatorsListClient({
               <SEOPagination
                 currentPage={clientPage}
                 totalPages={clientTotalPages}
-                baseUrl="/creators"
                 onPageChange={handlePageChange}
               />
             </>

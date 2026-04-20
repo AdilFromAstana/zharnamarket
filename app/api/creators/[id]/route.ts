@@ -8,6 +8,7 @@ import {
   serverError,
 } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { Platform } from "@prisma/client";
 import {
   isValidEnum,
   isValidFromArray,
@@ -17,6 +18,10 @@ import {
   LIMITS,
   validateContacts,
 } from "@/lib/validation";
+import { validateProfanityFields } from "@/lib/content-moderation";
+import { autoThumbnailForUrl } from "@/lib/video-thumbnail";
+import { persistThumbnailIfEphemeral } from "@/lib/thumbnail-store";
+import { deleteLocalUploads, isLocalUpload } from "@/lib/upload-cleanup";
 
 // Get valid category and city keys from database for validation
 async function getValidReferenceData() {
@@ -44,7 +49,12 @@ async function getValidReferenceData() {
 function getCreatorInclude() {
   return {
     platforms: true,
-    portfolio: { orderBy: { createdAt: "desc" as const } },
+    portfolio: {
+      orderBy: { createdAt: "desc" as const },
+      include: {
+        category: { select: { id: true, key: true, label: true } },
+      },
+    },
     priceItems: { orderBy: { sortOrder: "asc" as const } },
     boosts: { where: { expiresAt: { gte: new Date() } } },
     user: { select: { id: true, name: true, email: true, avatarColor: true } },
@@ -185,6 +195,90 @@ export async function PUT(
     const contactsErr = validateContacts(contacts);
     if (contactsErr) return badRequest(contactsErr);
 
+    const profanityErr = validateProfanityFields({
+      "Название профиля": title,
+      Имя: fullName,
+      "Ник (username)": username,
+      "О себе (bio)": bio,
+    });
+    if (profanityErr) return badRequest(profanityErr);
+
+    const detectPlatform = (url: string): Platform => {
+      const u = url.toLowerCase();
+      if (u.includes("tiktok.com")) return "TikTok";
+      if (u.includes("instagram.com")) return "Instagram";
+      if (u.includes("youtube.com") || u.includes("youtu.be")) return "YouTube";
+      if (u.includes("threads.net")) return "Threads";
+      if (u.includes("t.me") || u.includes("telegram.me")) return "Telegram";
+      if (
+        u.includes("vk.com") ||
+        u.includes("vkvideo.ru") ||
+        u.includes("vk.ru")
+      ) {
+        return "VK";
+      }
+      return "TikTok";
+    };
+
+    const rawPortfolio: Array<{
+      videoUrl?: string;
+      category?: string | null;
+      description?: string | null;
+      thumbnail?: string | null;
+      views?: number | null;
+      likes?: number | null;
+    }> =
+      body.portfolio !== undefined && Array.isArray(body.portfolio)
+        ? body.portfolio.filter(
+            (p: { videoUrl?: string }) => p?.videoUrl?.trim(),
+          )
+        : [];
+    const portfolioInput = await Promise.all(
+      rawPortfolio.map(async (item) => {
+        const catKey = item.category ? resolveCategoryKey(item.category) : null;
+        const catRecord = catKey
+          ? await prisma.category.findUnique({ where: { key: catKey } })
+          : null;
+        const videoUrl = item.videoUrl!.trim();
+        const rawThumbnail =
+          item.thumbnail?.trim() || autoThumbnailForUrl(videoUrl) || "";
+        const thumbnail = rawThumbnail
+          ? (await persistThumbnailIfEphemeral(rawThumbnail)) ?? ""
+          : "";
+        const views =
+          typeof item.views === "number" && Number.isFinite(item.views)
+            ? Math.max(0, Math.floor(item.views))
+            : null;
+        const likes =
+          typeof item.likes === "number" && Number.isFinite(item.likes)
+            ? Math.max(0, Math.floor(item.likes))
+            : null;
+        return {
+          videoUrl,
+          platform: detectPlatform(videoUrl),
+          thumbnail,
+          description: item.description ?? null,
+          categoryId: catRecord?.id ?? null,
+          views,
+          likes,
+        };
+      }),
+    );
+
+    // Собираем старые локальные thumbnail'ы до удаления, чтобы потом
+    // удалить с диска те, что больше не используются.
+    const oldLocalThumbnails: string[] =
+      body.portfolio !== undefined
+        ? (
+            await prisma.portfolioItem.findMany({
+              where: { profileId: id },
+              select: { thumbnail: true },
+            })
+          )
+            .map((i: { thumbnail: string | null }) => i.thumbnail)
+            .filter(isLocalUpload)
+        : [];
+
     // Всё в одной транзакции: delete + update + create
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const profile = await prisma.$transaction(async (tx: any) => {
@@ -274,25 +368,32 @@ export async function PUT(
           // Портфолио (если передано)
           ...(body.portfolio !== undefined && {
             portfolio: {
-              create: (body.portfolio ?? []).map(
-                (item: {
-                  videoUrl: string;
-                  category?: string;
-                  description?: string;
-                  thumbnail?: string;
-                }) => ({
-                  videoUrl: item.videoUrl,
-                  category: item.category ?? null,
-                  description: item.description ?? null,
-                  thumbnail: item.thumbnail ?? null,
-                }),
-              ),
+              create: portfolioInput.map((item) => ({
+                videoUrl: item.videoUrl,
+                platform: item.platform,
+                thumbnail: item.thumbnail,
+                description: item.description,
+                ...(item.categoryId
+                  ? { category: { connect: { id: item.categoryId } } }
+                  : {}),
+                views: item.views,
+                likes: item.likes,
+              })),
             },
           }),
         },
         include: getCreatorInclude(),
       });
     });
+
+    // Чистим локальные thumbnail'ы, которые больше не используются.
+    if (body.portfolio !== undefined && oldLocalThumbnails.length > 0) {
+      const newThumbnails = new Set(portfolioInput.map((i) => i.thumbnail));
+      const orphans = oldLocalThumbnails.filter((t) => !newThumbnails.has(t));
+      if (orphans.length > 0) {
+        await deleteLocalUploads(orphans);
+      }
+    }
 
     return NextResponse.json(profile);
   } catch (err) {
@@ -369,11 +470,26 @@ export async function DELETE(
     if (!userId) return unauthorized();
 
     const { id } = await params;
-    const existing = await prisma.creatorProfile.findUnique({ where: { id } });
+    const existing = await prisma.creatorProfile.findUnique({
+      where: { id },
+      select: {
+        userId: true,
+        avatar: true,
+        screenshots: true,
+        portfolio: { select: { thumbnail: true } },
+      },
+    });
     if (!existing) return notFound("Профиль не найден");
     if (existing.userId !== userId) return forbidden();
 
     await prisma.creatorProfile.delete({ where: { id } });
+
+    // Чистим файлы с диска после успешного удаления записи.
+    await deleteLocalUploads([
+      existing.avatar,
+      ...(existing.screenshots ?? []),
+      ...existing.portfolio.map((p) => p.thumbnail),
+    ]);
 
     return NextResponse.json({ message: "Профиль удалён" });
   } catch (err) {

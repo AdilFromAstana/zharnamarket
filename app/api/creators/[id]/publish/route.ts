@@ -12,10 +12,24 @@ export async function POST(
     if (!userId) return unauthorized();
 
     const { id } = await params;
-    const existing = await prisma.creatorProfile.findUnique({ where: { id } });
+    const existing = await prisma.creatorProfile.findUnique({
+      where: { id },
+      include: { portfolio: { select: { id: true } } },
+    });
     if (!existing) return notFound("Профиль не найден");
     if (existing.userId !== userId) return forbidden();
     if (existing.isPublished) return badRequest("Профиль уже опубликован");
+
+    if (!existing.avatar) {
+      return badRequest(
+        "Для публикации добавьте фото профиля в настройках",
+      );
+    }
+    if ((existing.portfolio?.length ?? 0) < 1) {
+      return badRequest(
+        "Для публикации добавьте хотя бы одну работу в портфолио",
+      );
+    }
 
     const profile = await prisma.creatorProfile.update({
       where: { id },

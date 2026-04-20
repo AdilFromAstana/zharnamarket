@@ -18,6 +18,7 @@ import {
   cleanupBalance,
 } from "../../helpers";
 import { cityId, categoryId } from "../refs";
+import { PLATFORM_COMMISSION_RATE } from "@/lib/constants";
 
 import { POST as submitPost } from "@/app/api/tasks/[id]/submissions/route";
 
@@ -307,9 +308,11 @@ describe("POST /api/tasks/[id]/submissions", () => {
       expect(body.submission.status).toBe("submitted");
 
       // claimedViews=20_000, rpm=200, cap=50_000 → expected gross = (20000/1000)*200 = 4000
+      const expectedCommission = 4_000 * PLATFORM_COMMISSION_RATE;
+      const expectedPayout = 4_000 - expectedCommission;
       expect(body.preview.grossAmount).toBe(4_000);
-      expect(body.preview.commissionAmount).toBeCloseTo(800, 0); // 20%
-      expect(body.preview.payoutAmount).toBeCloseTo(3_200, 0);
+      expect(body.preview.commissionAmount).toBeCloseTo(expectedCommission, 0);
+      expect(body.preview.payoutAmount).toBeCloseTo(expectedPayout, 0);
 
       // Verify DB submission
       const sub = await prisma.videoSubmission.findUnique({ where: { id: submissionId } });

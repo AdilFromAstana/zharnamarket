@@ -22,6 +22,7 @@ import {
 } from "../../helpers";
 
 import { POST as approvePost } from "@/app/api/admin/submissions/[id]/approve/route";
+import { PLATFORM_COMMISSION_RATE } from "@/lib/constants";
 
 // ─── Shared state ────────────────────────────────────────────────────────────
 
@@ -157,17 +158,19 @@ describe("POST /api/admin/submissions/[id]/approve", () => {
 
       const body = await res.json();
       // gross = (25000/1000)*200 = 5000
+      const expectedCommission = 5_000 * PLATFORM_COMMISSION_RATE;
+      const expectedPayout = 5_000 - expectedCommission;
       expect(body.approvedViews).toBe(25_000);
       expect(body.grossAmount).toBe(5_000);
-      expect(body.commissionAmount).toBeCloseTo(1_000, 1); // 20% of 5000
-      expect(body.payoutAmount).toBeCloseTo(4_000, 1);    // 80% of 5000
+      expect(body.commissionAmount).toBeCloseTo(expectedCommission, 1);
+      expect(body.payoutAmount).toBeCloseTo(expectedPayout, 1);
 
       // Verify submission updated
       const subAfter = await prisma.videoSubmission.findUnique({ where: { id: sub.id } });
       expect(subAfter!.status).toBe("approved");
       expect(subAfter!.approvedViews).toBe(25_000);
-      expect(subAfter!.payoutAmount).toBeCloseTo(4_000, 1);
-      expect(subAfter!.commissionAmount).toBeCloseTo(1_000, 1);
+      expect(subAfter!.payoutAmount).toBeCloseTo(expectedPayout, 1);
+      expect(subAfter!.commissionAmount).toBeCloseTo(expectedCommission, 1);
       expect(subAfter!.grossAmount).toBe(5_000);
       expect(subAfter!.moderatorId).toBe(adminId);
       expect(subAfter!.moderatedAt).toBeInstanceOf(Date);
@@ -180,15 +183,15 @@ describe("POST /api/admin/submissions/[id]/approve", () => {
       // Verify creator balance
       const balance = await prisma.creatorBalance.findUnique({ where: { userId: creatorId } });
       expect(balance).not.toBeNull();
-      expect(balance!.balance).toBeCloseTo(4_000, 1);
-      expect(balance!.totalEarned).toBeCloseTo(4_000, 1);
+      expect(balance!.balance).toBeCloseTo(expectedPayout, 1);
+      expect(balance!.totalEarned).toBeCloseTo(expectedPayout, 1);
 
       // Verify BalanceTransaction
       const tx = await prisma.balanceTransaction.findFirst({
         where: { balanceId: balance!.id, type: "earning", submissionId: sub.id },
       });
       expect(tx).not.toBeNull();
-      expect(tx!.amount).toBeCloseTo(4_000, 1);
+      expect(tx!.amount).toBeCloseTo(expectedPayout, 1);
       expect(tx!.description).toContain("Test Escrow Ad");
     });
 

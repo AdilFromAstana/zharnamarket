@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   // Prisma и pg-адаптер — серверные пакеты, не должны проходить через браузерный резолвер
   serverExternalPackages: ["@prisma/client", "@prisma/adapter-pg", "pg"],
+  // Security headers живут в proxy.ts (единый источник правды)
   async redirects() {
     return [
       { source: "/balance", destination: "/cabinet/balance", permanent: true },

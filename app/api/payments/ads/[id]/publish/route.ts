@@ -10,7 +10,11 @@ import {
 import { prisma } from "@/lib/prisma";
 import { PUBLICATION_PRICE, PUBLICATION_DAYS } from "@/lib/constants";
 import { validatePromoCode, applyPromoCode } from "@/lib/promo";
-import { getPaymentProvider, isPaymentMock } from "@/lib/payment-client";
+import {
+  getProviderForMethod,
+  type PaymentMethodId,
+} from "@/lib/payment-providers";
+import { paymentLimiter, rateLimitGuard } from "@/lib/rate-limit";
 
 // POST /api/payments/ads/[id]/publish — оплатить публикацию объявления
 export async function POST(
@@ -20,6 +24,9 @@ export async function POST(
   try {
     const userId = await getCurrentUserId(req);
     if (!userId) return unauthorized();
+
+    const limited = rateLimitGuard(paymentLimiter, `payment:${userId}`, 600);
+    if (limited) return limited;
 
     const { id: adId } = await params;
     const body = await req.json();
@@ -31,8 +38,11 @@ export async function POST(
     if (!method) return badRequest("Способ оплаты обязателен");
 
     const isWallet = method === "wallet";
-    if (!isWallet && !["kaspi", "halyk", "card"].includes(method)) {
-      return badRequest("Способ оплаты: kaspi, halyk, card или wallet");
+    const providerEntry = isWallet
+      ? null
+      : getProviderForMethod(method as PaymentMethodId);
+    if (!isWallet && !providerEntry) {
+      return badRequest("Способ оплаты недоступен");
     }
 
     const ad = await prisma.ad.findFirst({
@@ -180,7 +190,7 @@ export async function POST(
           adId,
           type: "ad_publication",
           amount: finalAmount,
-          method: method as "kaspi" | "halyk" | "card",
+          method: method as PaymentMethodId,
           status: isFree ? "success" : "pending",
         };
 
@@ -237,18 +247,20 @@ export async function POST(
       });
     }
 
-    // Инициируем платёж через провайдера
-    const provider = getPaymentProvider();
+    // providerEntry получен выше
+    if (!providerEntry) {
+      return badRequest("Способ оплаты недоступен");
+    }
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { email: true, phone: true },
     });
 
-    const { paymentUrl, externalId } = await provider.initPayment({
+    const { paymentUrl, externalId } = await providerEntry.provider.initPayment({
       amount: finalAmount,
       description: `Публикация объявления: ${ad.title}`,
       orderId: result.id,
-      method: method as "kaspi" | "halyk" | "card",
+      method: method as PaymentMethodId,
       userEmail: user?.email ?? "",
       userPhone: user?.phone ?? undefined,
     });
@@ -263,7 +275,7 @@ export async function POST(
       paymentId: result.id,
       paymentUrl,
       status: "pending",
-      isMock: isPaymentMock(),
+      isMock: providerEntry.providerId === "mock",
       originalAmount,
       discountAmount,
       finalAmount,

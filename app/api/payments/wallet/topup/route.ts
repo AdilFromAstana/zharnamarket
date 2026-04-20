@@ -6,8 +6,11 @@ import {
   serverError,
 } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getPaymentProvider, isPaymentMock } from "@/lib/payment-client";
-import { VALID_PAYMENT_METHODS } from "@/lib/validation";
+import {
+  getProviderForMethod,
+  type PaymentMethodId,
+} from "@/lib/payment-providers";
+import { paymentLimiter, rateLimitGuard } from "@/lib/rate-limit";
 
 const MIN_TOPUP_AMOUNT = 100; // ₸
 
@@ -21,6 +24,9 @@ export async function POST(req: NextRequest) {
     const userId = await getCurrentUserId(req);
     if (!userId) return unauthorized();
 
+    const limited = rateLimitGuard(paymentLimiter, `payment:${userId}`, 600);
+    if (limited) return limited;
+
     const body = await req.json();
     const { amount, method } = body as { amount?: number; method?: string };
 
@@ -28,8 +34,10 @@ export async function POST(req: NextRequest) {
       return badRequest(`Минимальная сумма пополнения: ${MIN_TOPUP_AMOUNT} ₸`);
     }
 
-    if (!method || !VALID_PAYMENT_METHODS.has(method)) {
-      return badRequest("Выберите способ оплаты: kaspi, halyk, card");
+    if (!method) return badRequest("Способ оплаты обязателен");
+    const providerEntry = getProviderForMethod(method as PaymentMethodId);
+    if (!providerEntry) {
+      return badRequest("Способ оплаты недоступен");
     }
 
     // Получаем данные пользователя для провайдера
@@ -45,18 +53,17 @@ export async function POST(req: NextRequest) {
         userId,
         type: "wallet_topup",
         amount,
-        method: method as "kaspi" | "halyk" | "card",
+        method: method as PaymentMethodId,
         status: "pending",
       },
     });
 
     // Инициируем платёж через провайдера
-    const provider = getPaymentProvider();
-    const { paymentUrl, externalId } = await provider.initPayment({
+    const { paymentUrl, externalId } = await providerEntry.provider.initPayment({
       amount,
       description: `Пополнение кошелька: ${user.name}`,
       orderId: session.id,
-      method: method as "kaspi" | "halyk" | "card",
+      method: method as PaymentMethodId,
       userEmail: user.email ?? "",
       userPhone: user.phone ?? undefined,
     });
@@ -70,7 +77,7 @@ export async function POST(req: NextRequest) {
       sessionId: session.id,
       paymentUrl,
       amount,
-      isMock: isPaymentMock(),
+      isMock: providerEntry.providerId === "mock",
     });
   } catch (err) {
     console.error("[POST /api/payments/wallet/topup]", err);

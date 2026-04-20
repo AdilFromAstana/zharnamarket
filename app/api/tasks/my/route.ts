@@ -35,10 +35,27 @@ export async function GET(req: NextRequest) {
       include: {
         boosts: {
           where: { expiresAt: { gt: new Date() } },
-          select: { boostType: true, expiresAt: true },
+          select: { boostType: true, activatedAt: true, expiresAt: true },
         },
       },
     });
+
+    // Lazy expiry: если cron ещё не прошёл, но срок вышел — транзакционно переводим в expired,
+    // чтобы UI/API не показывал активным то, чего уже нет
+    const now = new Date();
+    const staleActive = ads.filter(
+      (ad) =>
+        ad.status === "active" && ad.expiresAt !== null && ad.expiresAt < now,
+    );
+    if (staleActive.length > 0) {
+      await prisma.ad.updateMany({
+        where: { id: { in: staleActive.map((a) => a.id) } },
+        data: { status: "expired" },
+      });
+      for (const ad of staleActive) {
+        ad.status = "expired";
+      }
+    }
 
     return NextResponse.json(ads.map(mapPrismaAdToAd));
   } catch (err) {

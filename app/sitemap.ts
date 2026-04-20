@@ -1,5 +1,9 @@
 import type { MetadataRoute } from "next";
 import { prisma } from "@/lib/prisma";
+import {
+  ALL_CITY_SLUGS,
+  ALL_PLATFORM_SLUGS,
+} from "@/lib/seo/pretty-slugs";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +51,30 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       ...withLangAlternates(`${BASE_URL}/creators`),
     },
   ];
+
+  // SEO landing pages: /ads/{city|platform} and /creators/{city|platform}.
+  // Pretty URLs handled by proxy.ts rewrite; each is a distinct indexable page.
+  const prettySlugs = [...ALL_CITY_SLUGS, ...ALL_PLATFORM_SLUGS];
+  const prettyRoutes: MetadataRoute.Sitemap = prettySlugs.flatMap((slug) => {
+    const adsUrl = `${BASE_URL}/ads/${slug}`;
+    const creatorsUrl = `${BASE_URL}/creators/${slug}`;
+    return [
+      {
+        url: adsUrl,
+        lastModified: new Date(),
+        changeFrequency: "daily" as const,
+        priority: 0.85,
+        ...withLangAlternates(adsUrl),
+      },
+      {
+        url: creatorsUrl,
+        lastModified: new Date(),
+        changeFrequency: "daily" as const,
+        priority: 0.75,
+        ...withLangAlternates(creatorsUrl),
+      },
+    ];
+  });
 
   // 2. Paginated /ads listing pages + individual ad pages
   let paginatedAdsRoutes: MetadataRoute.Sitemap = [];
@@ -120,5 +148,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // Не падаем — статичные страницы уже добавлены выше
   }
 
-  return [...staticRoutes, ...paginatedAdsRoutes, ...adRoutes, ...creatorRoutes];
+  return [
+    ...staticRoutes,
+    ...prettyRoutes,
+    ...paginatedAdsRoutes,
+    ...adRoutes,
+    ...creatorRoutes,
+  ];
 }

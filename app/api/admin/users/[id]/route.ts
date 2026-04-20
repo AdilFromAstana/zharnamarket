@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, badRequest, serverError } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { sendAccountBlockedEmail, sendAccountUnblockedEmail } from "@/lib/email";
 
 /**
  * PATCH /api/admin/users/[id] — обновить роль или заблокировать/разблокировать.
@@ -21,7 +22,7 @@ export async function PATCH(
 
     const existing = await prisma.user.findUnique({
       where: { id },
-      select: { id: true, role: true },
+      select: { id: true, role: true, blocked: true, email: true },
     });
     if (!existing) {
       return NextResponse.json({ error: "Пользователь не найден" }, { status: 404 });
@@ -65,6 +66,18 @@ export async function PATCH(
         isDeleted: true,
       },
     });
+
+    // Уведомление юзеру, только если поле blocked реально поменялось.
+    if (
+      typeof blocked === "boolean" &&
+      blocked !== existing.blocked &&
+      existing.email
+    ) {
+      const sendFn = blocked ? sendAccountBlockedEmail : sendAccountUnblockedEmail;
+      sendFn(existing.email).catch((err) => {
+        console.error(`[admin/users] ${blocked ? "block" : "unblock"} email failed:`, err);
+      });
+    }
 
     return NextResponse.json(updated);
   } catch (err) {

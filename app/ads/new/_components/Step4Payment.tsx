@@ -5,13 +5,14 @@ import {
   TagOutlined,
   WalletOutlined,
   SafetyOutlined,
+  InfoCircleOutlined,
 } from "@ant-design/icons";
 import type { FormInstance } from "antd";
 import type { PaymentMethod } from "@/lib/types/payment";
 import { PUBLICATION_PRICE, PLATFORM_COMMISSION_RATE } from "@/lib/constants";
 import { formatPrice } from "@/lib/utils";
 import type { PromoResult } from "../_types";
-import { PROVIDER_PAYMENT_METHODS } from "../_constants";
+import { usePaymentMethods } from "@/hooks/usePaymentMethods";
 import Link from "next/link";
 
 type Step4PaymentProps = {
@@ -45,6 +46,8 @@ export default function Step4Payment({
   finalPayPrice,
 }: Step4PaymentProps) {
   const [promoExpanded, setPromoExpanded] = useState(false);
+  const { methods: providerMethods, isEmpty: providersEmpty } =
+    usePaymentMethods();
   const requiredAmount = isEscrowMode
     ? (form.getFieldValue("totalBudget") ?? 0)
     : finalPayPrice;
@@ -217,7 +220,7 @@ export default function Step4Payment({
           </button>
 
           {/* Другие способы */}
-          {PROVIDER_PAYMENT_METHODS.map((method) => (
+          {providerMethods.map((method) => (
             <button
               key={method.id}
               type="button"
@@ -237,12 +240,29 @@ export default function Step4Payment({
               <span className="text-sm font-medium text-gray-900 mt-2">
                 {method.label}
               </span>
-              <span className="text-xs text-gray-400 mt-0.5">
-                {method.desc}
-              </span>
+              {method.description && (
+                <span className="text-xs text-gray-400 mt-0.5">
+                  {method.description}
+                </span>
+              )}
             </button>
           ))}
         </div>
+
+        {providersEmpty && (
+          <div className="mt-3 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 p-3">
+            <InfoCircleOutlined style={{ color: "#d97706", marginTop: 2 }} />
+            <div className="text-xs text-amber-900">
+              <div className="font-medium">
+                Онлайн-оплата временно недоступна
+              </div>
+              <div className="mt-0.5 text-amber-800/80">
+                Сервис работает в бета-режиме. Оплата через карту/Kaspi/Halyk
+                откроется после запуска платёжной системы.
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Итого ── */}

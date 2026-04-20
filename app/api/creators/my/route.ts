@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
         portfolio: { orderBy: { createdAt: "desc" } },
         priceItems: { orderBy: { sortOrder: "asc" } },
         boosts: { where: { expiresAt: { gte: new Date() } } },
+        _count: { select: { views: true } },
       },
     });
 

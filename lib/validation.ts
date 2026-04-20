@@ -36,7 +36,11 @@ export const VALID_AD_STATUSES = new Set([
   "cancelled",
 ]);
 
-export const VALID_PAYMENT_METHODS = new Set(["kaspi", "halyk", "card"]);
+/**
+ * Куда юзер может вывести деньги со внутреннего баланса.
+ * Это НЕ платёжные провайдеры — для них используется реестр payment-providers.
+ */
+export const VALID_WITHDRAWAL_METHODS = new Set(["kaspi", "halyk", "card"]);
 
 export const VALID_BOOST_TYPES = new Set(["rise", "vip", "premium"]);
 

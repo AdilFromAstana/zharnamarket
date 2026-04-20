@@ -293,7 +293,6 @@ export const BOOST_OPTIONS: BoostOption[] = [
       "Бейдж «VIP»",
       "Привлекает внимание при скролле",
     ],
-    highlight: true,
   },
   {
     id: "premium",
@@ -307,6 +306,7 @@ export const BOOST_OPTIONS: BoostOption[] = [
       "Бейдж «Premium»",
       "Максимальная видимость за 7 дней",
     ],
+    highlight: true,
   },
 ];
 
@@ -337,7 +337,6 @@ export const CREATOR_BOOST_OPTIONS: BoostOption[] = [
       "Бейдж «VIP»",
       "Привлекает внимание при скролле",
     ],
-    highlight: true,
   },
   {
     id: "premium",
@@ -351,6 +350,7 @@ export const CREATOR_BOOST_OPTIONS: BoostOption[] = [
       "Бейдж «Premium»",
       "Максимальная видимость за 7 дней",
     ],
+    highlight: true,
   },
 ];
 
@@ -472,6 +472,7 @@ export const PLATFORM_COLORS: Record<string, string> = {
   TikTok: "#010101",
   Instagram: "#E1306C",
   YouTube: "#FF0000",
+  VK: "#0077FF",
 };
 
 /** Tailwind-классы для бейджей платформ (фон + текст) */
@@ -480,6 +481,7 @@ export const PLATFORM_BADGE_CLASSES: Record<string, string> = {
   Instagram:
     "bg-gradient-to-r from-purple-500 via-pink-500 to-orange-400 text-white",
   YouTube: "bg-red-600 text-white",
+  VK: "bg-[#0077FF] text-white",
 };
 
 // ─── Эскроу ──────────────────────────────────────────────────────────────────
@@ -489,6 +491,21 @@ export const PLATFORM_COMMISSION_RATE = 0.05; // 5%
 
 /** Минимальная сумма вывода на карту / Kaspi */
 export const MIN_WITHDRAWAL_AMOUNT = 500; // ₸
+
+// ─── Временные feature-флаги ─────────────────────────────────────────────────
+// Why: Freedom Pay не подключён в проде, payout-логика для вывода не реализована.
+// Бэкенд-код оставлен рабочим; скрыты только UI-точки входа.
+
+/** Показывать выбор внешних провайдеров (Kaspi/Halyk/Card) при оплате
+ *  объявления / буста / реактивации. Топап-форма не затронута. */
+export const SHOW_EXTERNAL_PAYMENT_METHODS = false;
+
+/** Показывать кнопку «Вывести средства» в кошельке. */
+export const SHOW_WITHDRAWAL_UI = false;
+
+/** Показывать выбор «Через платформу (эскроу) / Договорюсь сам» при создании
+ *  объявления типа «За просмотры». Пока выключено — используется только direct-режим. */
+export const SHOW_PLATFORM_ESCROW = false;
 
 /** Минимальный RPM (₸ за 1000 просмотров) */
 export const MIN_RPM = 50; // ₸

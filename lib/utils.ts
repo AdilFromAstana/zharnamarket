@@ -58,6 +58,23 @@ export function getTelegramUrl(handle: string): string {
   return `https://t.me/${clean}`;
 }
 
+/**
+ * Для показа превью видео: локальные пути (`/uploads/...`) и data:/blob: —
+ * как есть; внешние http(s) URL — через /api/img-proxy (обход CSP).
+ * Persist в /uploads/... делает бэкенд на сохранении креатора.
+ */
+export function toDisplayThumbnailUrl(
+  url: string | null | undefined,
+): string | null {
+  if (!url) return null;
+  if (url.startsWith("/")) return url;
+  if (url.startsWith("data:") || url.startsWith("blob:")) return url;
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return `/api/img-proxy?url=${encodeURIComponent(url)}`;
+  }
+  return url;
+}
+
 export function getWhatsappUrl(phone: string): string {
   const clean = phone.replace(/\D/g, "");
   return `https://wa.me/${clean}`;

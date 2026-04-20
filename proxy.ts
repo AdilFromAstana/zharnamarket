@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  CITY_SLUG_TO_KEY,
+  PLATFORM_SLUG_TO_KEY,
+} from "@/lib/seo/pretty-slugs";
 
 /**
  * Next.js 16 Proxy (замена middleware.ts):
@@ -6,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
  * 1. Защита маршрутов: cookie-флаг "vw_auth_flag" (устанавливается при login).
  * 2. Visitor ID: cookie "vw_vid" для per-visitor ротации бустов.
  * 3. Security headers: HSTS, CSP, XSS-protection и др.
+ * 4. Pretty-URL rewrites: /ads/almaty → /ads?city=Almaty (SEO landing pages).
  *
  * Клиентская проверка JWT делается через useRequireAuth() hook.
  */
@@ -22,14 +27,15 @@ const SECURITY_HEADERS: Record<string, string> = {
   // Запрет доступа к камере, микрофону, геолокации и др.
   "Permissions-Policy":
     "camera=(), microphone=(), geolocation=(), interest-cohort=()",
-  // CSP — контроль загрузки ресурсов
+  // CSP — контроль загрузки ресурсов.
+  // PostHog (eu.i.posthog.com) — analytics: нужен script-src + connect-src.
   "Content-Security-Policy": [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.posthog.com",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https://api.dicebear.com",
+    "img-src 'self' data: blob: https://api.dicebear.com https://*.posthog.com https://img.youtube.com https://i.ytimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com",
     "font-src 'self'",
-    "connect-src 'self'",
+    "connect-src 'self' https://*.posthog.com",
     "frame-src 'none'",
     "frame-ancestors 'none'",
     "form-action 'self' https://accounts.google.com https://oauth.telegram.org",
@@ -63,6 +69,44 @@ const PROTECTED_PATTERNS = [
 // Маршруты для неавторизованных (redirect на / если залогинен)
 const AUTH_ONLY_PATHS = ["/auth/login", "/auth/register"];
 
+/**
+ * Detect pretty-URL (e.g. /ads/almaty, /creators/tiktok) and return
+ * rewrite info, or null if it's not a pretty URL.
+ *
+ * Only matches exactly `/<base>/<slug>` — sub-paths like /ads/<id>/boost
+ * fall through untouched.
+ */
+function resolvePrettyUrl(
+  request: NextRequest,
+): { rewriteUrl: URL; prettyPath: string } | null {
+  const { pathname, searchParams } = request.nextUrl;
+  const match = pathname.match(/^\/(ads|creators)\/([^/]+)\/?$/);
+  if (!match) return null;
+
+  const [, base, rawSlug] = match;
+  const slug = rawSlug.toLowerCase();
+
+  const cityKey = CITY_SLUG_TO_KEY[slug];
+  const platformKey = PLATFORM_SLUG_TO_KEY[slug];
+  if (!cityKey && !platformKey) return null;
+
+  const rewriteUrl = request.nextUrl.clone();
+  rewriteUrl.pathname = `/${base}`;
+  // Preserve existing params first, then apply slug-derived filter
+  // (explicit filter in query string wins if user somehow combined them).
+  for (const [k, v] of searchParams.entries()) {
+    rewriteUrl.searchParams.set(k, v);
+  }
+  if (cityKey && !rewriteUrl.searchParams.get("city")) {
+    rewriteUrl.searchParams.set("city", cityKey);
+  }
+  if (platformKey && !rewriteUrl.searchParams.get("platform")) {
+    rewriteUrl.searchParams.set("platform", platformKey);
+  }
+
+  return { rewriteUrl, prettyPath: `/${base}/${slug}` };
+}
+
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -91,13 +135,26 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  // 3. Security headers
-  const response = NextResponse.next();
+  // 3. Pretty-URL rewrite (SEO landing pages) — строится ДО обычного response,
+  //    т.к. rewrite меняет таргет роута; security headers и visitor cookie
+  //    применяются к rewrite-response единообразно.
+  const pretty = resolvePrettyUrl(request);
+  const response = pretty
+    ? (() => {
+        const requestHeaders = new Headers(request.headers);
+        requestHeaders.set("x-pretty-path", pretty.prettyPath);
+        return NextResponse.rewrite(pretty.rewriteUrl, {
+          request: { headers: requestHeaders },
+        });
+      })()
+    : NextResponse.next();
+
+  // 4. Security headers
   for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
     response.headers.set(key, value);
   }
 
-  // 4. Visitor ID для per-visitor ротации бустов
+  // 5. Visitor ID для per-visitor ротации бустов
   if (!request.cookies.get(VISITOR_COOKIE)) {
     response.cookies.set(VISITOR_COOKIE, crypto.randomUUID(), {
       httpOnly: false,

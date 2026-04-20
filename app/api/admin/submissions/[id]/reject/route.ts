@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserId, unauthorized, badRequest, serverError } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import {
+  REJECTION_REASON_LABELS,
+  PERMANENT_REJECTION_REASONS,
+  type RejectionReason,
+} from "@/lib/types/submission";
+import { sendSubmissionRejectedEmail } from "@/lib/email";
 
 const VALID_REASONS = new Set([
   "no_brand", "no_banner", "fake_stats", "boosted_views",
@@ -38,6 +44,7 @@ export async function POST(
 
     const submission = await prisma.videoSubmission.findUnique({
       where: { id: submissionId },
+      include: { ad: { select: { title: true } } },
     });
 
     if (!submission) return badRequest("Подача не найдена");
@@ -68,6 +75,25 @@ export async function POST(
           moderatedAt: new Date(),
         },
       });
+    });
+
+    // Уведомление креатору. Fire-and-forget.
+    (async () => {
+      const creator = await prisma.user.findUnique({
+        where: { id: submission.creatorId },
+        select: { email: true },
+      });
+      if (!creator?.email) return;
+      const typedReason = reason as RejectionReason;
+      await sendSubmissionRejectedEmail(creator.email, {
+        taskTitle: submission.ad.title,
+        reasonLabel: REJECTION_REASON_LABELS[typedReason] ?? reason,
+        comment: comment?.trim() ?? null,
+        canAppeal: !PERMANENT_REJECTION_REASONS.includes(typedReason),
+        submissionId: submission.id,
+      });
+    })().catch((err) => {
+      console.error("[reject] creator email failed:", err);
     });
 
     return NextResponse.json({ ok: true, reason });

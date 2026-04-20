@@ -2,54 +2,62 @@
 
 import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
-import {
-  Form,
-  Input,
-  Button,
-  Select,
-  AutoComplete,
-  Tabs,
-  Collapse,
-  InputNumber,
-  Radio,
-  Breadcrumb,
-  Card,
-  Space,
-  Typography,
-  Spin,
-  Upload,
-  Avatar,
-} from "antd";
+import { Form, Button, Spin, Upload } from "antd";
 import {
   PlusOutlined,
-  SaveOutlined,
-  ArrowLeftOutlined,
-  CameraOutlined,
-  UserOutlined,
-  FileTextOutlined,
-  MobileOutlined,
-  VideoCameraOutlined,
-  PhoneOutlined,
-  PictureOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  PauseCircleOutlined,
+  ArrowRightOutlined,
   DeleteOutlined,
+  RocketOutlined,
 } from "@ant-design/icons";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import PublicLayout from "@/components/layout/PublicLayout";
+import StickyBottomBar from "@/components/ui/StickyBottomBar";
 import { api } from "@/lib/api-client";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { useCities, usePlatforms, useCategories, useAdFormats } from "@/hooks/useRefData";
+import type { BoostType } from "@/lib/types/payment";
+import {
+  useCities,
+  usePlatforms,
+  useCategories,
+  useAdFormats,
+} from "@/hooks/useRefData";
+import {
+  PLATFORM_URL_CONFIG,
+  buildCreatorPlatforms,
+  buildCreatorPortfolio,
+  buildCreatorPricing,
+  parsePriceLabelForForm,
+} from "@/lib/creator-form-config";
+import { useAvatarUpload } from "@/hooks/useAvatarUpload";
+import { useFetchFollowers } from "@/hooks/useFetchFollowers";
+import Step1Basics from "../new/_components/Step1Basics";
+import Step2Platforms from "../new/_components/Step2Platforms";
+import Step3Contacts from "../new/_components/Step3Contacts";
+import Step4Portfolio from "../new/_components/Step4Portfolio";
 
-// Типы для портфолио и платформ
 interface PortfolioItem {
   id?: string;
   videoUrl: string;
   category: string;
   description?: string | null;
   thumbnail?: string | null;
+  views?: number | null;
+  likes?: number | null;
+  title?: string | null;
+  platform?: string | null;
+}
+
+interface PortfolioApiItem {
+  id?: string;
+  videoUrl: string;
+  description?: string | null;
+  thumbnail?: string | null;
+  views?: number | null;
+  likes?: number | null;
+  platform?: string | null;
+  categoryId?: string | null;
+  category?: { key?: string | null } | string | null;
 }
 
 interface PlatformData {
@@ -57,35 +65,6 @@ interface PlatformData {
   handle: string;
   url: string;
   followers: number | null;
-}
-
-const QUICK_ADD_FORMATS = [
-  "Нативная интеграция",
-  "Баннер на видео",
-  "Хук (зацепка)",
-  "Полный рекламный ролик",
-];
-
-function buildPriceLabel(
-  platform: string | undefined,
-  adFormatLabel: string,
-): string {
-  return platform ? `${platform} — ${adFormatLabel}` : adFormatLabel;
-}
-
-function parsePriceLabelForForm(
-  label: string,
-  platformKeys: string[],
-): {
-  platform?: string;
-  adFormatLabel: string;
-} {
-  for (const p of platformKeys) {
-    if (label.startsWith(`${p} — `)) {
-      return { platform: p, adFormatLabel: label.slice(p.length + 3) };
-    }
-  }
-  return { adFormatLabel: label };
 }
 
 interface CreatorApiResponse {
@@ -105,31 +84,54 @@ interface CreatorApiResponse {
   contactWhatsapp?: string | null;
   contactPhone?: string | null;
   contactEmail?: string | null;
-  portfolio: PortfolioItem[];
+  portfolio: PortfolioApiItem[];
   platforms: PlatformData[];
   priceItems?: { label: string; price: number }[];
   screenshots?: string[];
+  isPublished?: boolean;
+  boosts?: Array<{ boostType: BoostType; expiresAt: string | Date }>;
+}
+
+function SectionHeading({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle?: string;
+}) {
+  return (
+    <div className="mb-4">
+      <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+      {subtitle && <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>}
+    </div>
+  );
 }
 
 function EditCreatorPageInner() {
-  // Защита страницы — редирект если не авторизован
   useRequireAuth();
 
   const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
-  const [creator, setCreator] = useState<CreatorApiResponse | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [isPublished, setIsPublished] = useState(false);
+  const [hasActiveBoost, setHasActiveBoost] = useState(false);
   const [form] = Form.useForm();
   const [portfolioItems, setPortfolioItems] = useState<PortfolioItem[]>([]);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [avatarUploading, setAvatarUploading] = useState(false);
+  const {
+    url: avatarUrl,
+    setUrl: setAvatarUrl,
+    uploading: avatarUploading,
+    upload: handleAvatarUpload,
+  } = useAvatarUpload();
   const [screenshotUrls, setScreenshotUrls] = useState<string[]>([]);
   const [screenshotUploading, setScreenshotUploading] = useState(false);
+  const { fetchingPlatform, fetchFollowers: handleFetchFollowers } =
+    useFetchFollowers(form);
   const { data: adFormats = [] } = useAdFormats();
   const { data: cities = [] } = useCities();
-  const { data: platformsOptions = [] } = usePlatforms();
+  const { data: platforms = [] } = usePlatforms();
   const { data: categories = [] } = useCategories();
 
   const profileId = searchParams.get("id") ?? "";
@@ -142,15 +144,44 @@ function EditCreatorPageInner() {
     }
 
     setLoadingData(true);
-    api.get<CreatorApiResponse>(`/api/creators/${profileId}`)
+    api
+      .get<CreatorApiResponse>(`/api/creators/${profileId}`)
       .then((data) => {
-        const platformKeys = platformsOptions.map((p) => p.key);
-        setCreator(data);
-        setPortfolioItems(data.portfolio ?? []);
+        const platformKeys = platforms.map((p) => p.key);
+        const mappedPortfolio: PortfolioItem[] = (data.portfolio ?? []).map(
+          (item) => {
+            const categoryKey =
+              typeof item.category === "string"
+                ? item.category
+                : (item.category?.key ?? "");
+            return {
+              id: item.id,
+              videoUrl: item.videoUrl,
+              category: categoryKey,
+              description: item.description ?? null,
+              thumbnail: item.thumbnail ?? null,
+              views: item.views ?? null,
+              likes: item.likes ?? null,
+              platform: item.platform ?? null,
+            };
+          },
+        );
+        setPortfolioItems(mappedPortfolio);
         setAvatarUrl(data.avatar ?? null);
         setScreenshotUrls(data.screenshots ?? []);
+        setIsPublished(!!data.isPublished);
+        const activeBoosts = (data.boosts ?? []).filter(
+          (b) => new Date(b.expiresAt).getTime() >= Date.now(),
+        );
+        setHasActiveBoost(activeBoosts.length > 0);
 
-        // Базовые поля
+        const platformHandles: Record<string, string> = {};
+        const platformFollowers: Record<string, number | null> = {};
+        for (const p of data.platforms ?? []) {
+          platformHandles[p.name] = p.handle ?? "";
+          platformFollowers[p.name] = p.followers ?? null;
+        }
+
         const formValues: Record<string, unknown> = {
           title: data.title,
           fullName: data.fullName,
@@ -161,28 +192,27 @@ function EditCreatorPageInner() {
               ? data.city
               : (data.city?.key ?? undefined),
           availability: data.availability,
-          contentCategories:
+          categories:
             data.categories?.map((c) => c.key) ?? data.contentCategories ?? [],
-          minimumRate: data.minimumRate,
           negotiable: data.negotiable,
-          telegram: data.contactTelegram ?? "",
+          telegram: data.contactTelegram?.replace(/^@/, "") ?? "",
           whatsapp: data.contactWhatsapp ?? "",
           phone: data.contactPhone ?? "",
           email: data.contactEmail ?? "",
+          platformHandles,
+          platformFollowers,
         };
 
-        // Предзаполнение полей платформ
-        for (const p of data.platforms ?? []) {
-          formValues[`${p.name}_handle`] = p.handle ?? "";
-          formValues[`${p.name}_followers`] = p.followers ?? null;
-        }
-
-        // Предзаполнение прайс-листа — парсим label обратно в platform + adFormatLabel
         if (data.priceItems && data.priceItems.length > 0) {
-          formValues.priceItems = data.priceItems.map((item) => ({
-            ...parsePriceLabelForForm(item.label, platformKeys),
-            price: item.price,
-          }));
+          formValues.priceItems = data.priceItems.map((item) => {
+            const parsed = parsePriceLabelForForm(item.label, platformKeys);
+            return {
+              platform: parsed.platform,
+              adFormatLabel: parsed.adFormatLabel,
+              priceUnit: parsed.priceUnit ?? "per_integration",
+              price: item.price,
+            };
+          });
         }
 
         form.setFieldsValue(formValues);
@@ -194,7 +224,7 @@ function EditCreatorPageInner() {
       .finally(() => {
         setLoadingData(false);
       });
-  }, [profileId, form, platformsOptions]);
+  }, [profileId, form, platforms, setAvatarUrl]);
 
   const handleSave = async () => {
     let values: Record<string, unknown>;
@@ -206,38 +236,18 @@ function EditCreatorPageInner() {
 
     setLoading(true);
     try {
-      const rawItems =
-        (values.priceItems as
-          | { platform?: string; adFormatLabel: string; price: number }[]
-          | undefined) ?? [];
-      const priceItems = rawItems
-        .filter((item) => item?.adFormatLabel && item?.price > 0)
-        .map((item) => ({
-          label: buildPriceLabel(item.platform, item.adFormatLabel),
-          price: item.price,
-        }));
-      const minimumRate =
-        priceItems.length > 0
-          ? Math.min(...priceItems.map((i) => i.price))
-          : (values.minimumRate ?? 0);
-
-      // Собираем данные платформ из form fields
-      const platforms = platformsOptions.map((p) => ({
-        name: p.key,
-        handle: (values[`${p.key}_handle`] as string) || "",
-        url: "",
-        followers: (values[`${p.key}_followers`] as number) ?? null,
-      })).filter((p) => p.handle); // только заполненные
-
-      // Собираем портфолио (только с videoUrl)
-      const portfolio = portfolioItems
-        .filter((item) => item.videoUrl?.trim())
-        .map((item) => ({
-          videoUrl: item.videoUrl,
-          category: item.category || null,
-          description: item.description || null,
-          thumbnail: item.thumbnail || null,
-        }));
+      const pricing = buildCreatorPricing(
+        values.priceItems as Parameters<typeof buildCreatorPricing>[0],
+      );
+      const platformsPayload = buildCreatorPlatforms(
+        values.platformHandles as
+          | Record<string, string | undefined>
+          | undefined,
+        values.platformFollowers as
+          | Record<string, number | null | undefined>
+          | undefined,
+      );
+      const portfolio = buildCreatorPortfolio(portfolioItems);
 
       await api.put(`/api/creators/${profileId}`, {
         avatar: avatarUrl,
@@ -248,16 +258,16 @@ function EditCreatorPageInner() {
         bio: values.bio || null,
         city: values.city,
         availability: values.availability,
-        contentCategories: values.contentCategories ?? [],
-        platforms,
+        contentCategories: values.categories ?? [],
+        platforms: platformsPayload,
         portfolio,
         pricing: {
-          minimumRate,
+          minimumRate: pricing.minimumRate,
           negotiable: values.negotiable ?? true,
-          items: priceItems,
+          items: pricing.items,
         },
         contacts: {
-          telegram: values.telegram || null,
+          telegram: values.telegram ? `@${values.telegram}` : null,
           whatsapp: values.whatsapp || null,
           phone: values.phone || null,
           email: values.email || null,
@@ -273,297 +283,6 @@ function EditCreatorPageInner() {
       setLoading(false);
     }
   };
-
-  const handleAvatarUpload = async (file: File) => {
-    setAvatarUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("type", "avatar");
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        credentials: "include",
-        body: fd,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        toast.error(err.error ?? "Ошибка загрузки");
-        return;
-      }
-      const { url } = await res.json();
-      setAvatarUrl(url);
-      toast.success("Фото загружено");
-    } catch {
-      toast.error("Ошибка загрузки фото");
-    } finally {
-      setAvatarUploading(false);
-    }
-  };
-
-  const basicSection = (
-    <div className="space-y-0">
-      {/* Аватар */}
-      <div className="flex items-center gap-4 mb-4 pb-4 border-b border-gray-100">
-        <Avatar
-          size={72}
-          icon={<UserOutlined />}
-          src={avatarUrl ?? undefined}
-          style={{ background: "#0EA5E9", flexShrink: 0 }}
-        />
-        <div>
-          <Upload
-            accept="image/*"
-            showUploadList={false}
-            disabled={avatarUploading}
-            beforeUpload={(file) => {
-              handleAvatarUpload(file as unknown as File);
-              return false;
-            }}
-          >
-            <Button
-              size="small"
-              icon={<CameraOutlined />}
-              loading={avatarUploading}
-            >
-              {avatarUploading ? "Загрузка..." : "Загрузить фото"}
-            </Button>
-          </Upload>
-          <p className="text-xs text-gray-400 mt-1">
-            JPG, PNG, GIF или WebP до 5 МБ
-          </p>
-        </div>
-      </div>
-
-      <Form.Item
-        label="Название профиля"
-        name="title"
-        rules={[
-          { required: true, message: "Дайте название профилю" },
-          { min: 5, message: "Минимум 5 символов" },
-        ]}
-        extra="Например: «Мастер нарезок», «Обзорщик еды», «TikTok фудблогер»"
-      >
-        <Input
-          placeholder="Как назвать эту специализацию?"
-          maxLength={60}
-          showCount
-        />
-      </Form.Item>
-      <Form.Item label="Имя" name="fullName" rules={[{ required: true }]}>
-        <Input placeholder="Данияр Сейткали" />
-      </Form.Item>
-      <Form.Item label="Ник (username)" name="username">
-        <Input placeholder="@username" />
-      </Form.Item>
-      <Form.Item label="О себе" name="bio">
-        <Input.TextArea rows={3} placeholder="Расскажите о себе..." />
-      </Form.Item>
-      <Form.Item label="Город" name="city" rules={[{ required: true }]}>
-        <Select options={cities.map((c) => ({ label: c.label, value: c.key }))} />
-      </Form.Item>
-      <Form.Item label="Статус доступности" name="availability">
-        <Radio.Group buttonStyle="solid" className="flex flex-wrap gap-y-2">
-          <Radio.Button value="available">
-            <CheckCircleOutlined className="mr-1 text-green-500" />
-            Свободен
-          </Radio.Button>
-          <Radio.Button value="partially_available">
-            <PauseCircleOutlined className="mr-1 text-yellow-500" />
-            Частично
-          </Radio.Button>
-          <Radio.Button value="busy">
-            <CloseCircleOutlined className="mr-1 text-red-500" />
-            Занят
-          </Radio.Button>
-        </Radio.Group>
-      </Form.Item>
-    </div>
-  );
-
-  const platformsSection = (
-    <div className="space-y-4">
-      <p className="text-sm text-gray-500">
-        Укажите ваши платформы и ссылки на профили
-      </p>
-      {platformsOptions.map((platform) => (
-        <Card key={platform.key} size="small" className="border-gray-200">
-          <div className="font-medium text-gray-900 mb-3">{platform.label}</div>
-          <div className="space-y-2">
-            <Form.Item name={`${platform.key}_handle`} noStyle>
-              <Space.Compact style={{ width: "100%" }}>
-                <Typography.Text className="flex items-center px-3 bg-gray-50 border border-gray-300 border-r-0 rounded-l-md text-gray-500 text-sm">
-                  @
-                </Typography.Text>
-                <Input placeholder={`${platform.key.toLowerCase()}_handle`} />
-              </Space.Compact>
-            </Form.Item>
-            <Form.Item name={`${platform.key}_followers`} noStyle>
-              <InputNumber
-                placeholder="Подписчиков"
-                style={{ width: "100%" }}
-                suffix="чел."
-              />
-            </Form.Item>
-          </div>
-        </Card>
-      ))}
-    </div>
-  );
-
-  const contentSection = (
-    <div className="space-y-4">
-      <Form.Item
-        label="Категории контента"
-        name="contentCategories"
-        rules={[{ required: true }]}
-      >
-        <Select
-          mode="multiple"
-              options={categories.map((c) => ({ label: c.label, value: c.key }))}
-          placeholder="Выберите категории"
-        />
-      </Form.Item>
-
-      {/* Прайс-лист по форматам */}
-      <div>
-        <p className="text-sm font-medium text-gray-700 mb-1">Прайс-лист</p>
-        <p className="text-xs text-gray-400 mb-3">
-          Укажи платформу (необязательно), тип рекламы и цену — заказчик сразу
-          поймёт стоимость
-        </p>
-
-        <Form.List name="priceItems">
-          {(fields, { add, remove }) => (
-            <>
-              {/* Быстрое добавление */}
-              <div className="flex flex-wrap gap-1.5 mb-3">
-                <span className="text-xs text-gray-400 self-center shrink-0">
-                  Добавить:
-                </span>
-                {QUICK_ADD_FORMATS.map((fmt) => (
-                  <button
-                    key={fmt}
-                    type="button"
-                    onClick={() => add({ adFormatLabel: fmt })}
-                    className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors"
-                  >
-                    + {fmt}
-                  </button>
-                ))}
-              </div>
-
-              {fields.map(({ key, name, ...restField }) => (
-                <div key={key} className="flex gap-2 mb-2 items-start">
-                  {/* Платформа (необязательно) */}
-                  <Form.Item {...restField} name={[name, "platform"]} noStyle>
-                    <Select
-                      allowClear
-                      placeholder="Платф."
-                      style={{ width: 100 }}
-                      options={platformsOptions.map((p) => ({
-                        label: p.label,
-                        value: p.key,
-                      }))}
-                    />
-                  </Form.Item>
-
-                  {/* Тип рекламы */}
-                  <Form.Item
-                    {...restField}
-                    name={[name, "adFormatLabel"]}
-                    rules={[{ required: true, message: "Укажи тип" }]}
-                    style={{ flex: 1, marginBottom: 0 }}
-                  >
-                    <AutoComplete
-                      placeholder="Тип рекламы"
-                      options={adFormats.map((f) => ({
-                        label: f.label,
-                        value: f.label,
-                      }))}
-                      filterOption={(input, option) =>
-                        (option?.label as string)
-                          ?.toLowerCase()
-                          .includes(input.toLowerCase())
-                      }
-                    />
-                  </Form.Item>
-
-                  {/* Цена */}
-                  <Form.Item
-                    {...restField}
-                    name={[name, "price"]}
-                    rules={[{ required: true, message: "Цена" }]}
-                    style={{ width: 100, marginBottom: 0 }}
-                  >
-                    <InputNumber
-                      placeholder="15000"
-                      min={0}
-                      step={1000}
-                      style={{ width: "100%" }}
-                      suffix="₸"
-                    />
-                  </Form.Item>
-
-                  <Button
-                    danger
-                    type="text"
-                    icon={<DeleteOutlined />}
-                    onClick={() => remove(name)}
-                    style={{ marginTop: 4 }}
-                  />
-                </div>
-              ))}
-
-              <Button
-                type="dashed"
-                onClick={() => add()}
-                block
-                icon={<PlusOutlined />}
-              >
-                Добавить формат
-              </Button>
-            </>
-          )}
-        </Form.List>
-      </div>
-
-      <Form.Item name="negotiable" valuePropName="checked">
-        <Radio.Group>
-          <Radio value={true}>Ставка договорная</Radio>
-          <Radio value={false}>Ставка фиксированная</Radio>
-        </Radio.Group>
-      </Form.Item>
-    </div>
-  );
-
-  const contactsSection = (
-    <div className="space-y-0">
-      <p className="text-sm text-gray-500 mb-4">
-        Контакты обязательны. Через них бизнес будет писать вам напрямую.
-      </p>
-      <Form.Item
-        label="Telegram"
-        name="telegram"
-        rules={[{ required: true, message: "Укажите Telegram" }]}
-      >
-        <Space.Compact style={{ width: "100%" }}>
-          <Typography.Text className="flex items-center px-3 bg-gray-50 border border-gray-300 border-r-0 rounded-l-md text-gray-500 text-sm whitespace-nowrap">
-            t.me/
-          </Typography.Text>
-          <Input placeholder="username" />
-        </Space.Compact>
-      </Form.Item>
-      <Form.Item label="WhatsApp" name="whatsapp">
-        <Input placeholder="+7 (000) 000-00-00" />
-      </Form.Item>
-      <Form.Item label="Телефон" name="phone">
-        <Input placeholder="+7 (000) 000-00-00" />
-      </Form.Item>
-      <Form.Item label="Email" name="email">
-        <Input placeholder="email@example.com" />
-      </Form.Item>
-    </div>
-  );
 
   const handleScreenshotUpload = async (file: File) => {
     setScreenshotUploading(true);
@@ -585,194 +304,9 @@ function EditCreatorPageInner() {
     }
   };
 
-  const portfolioSection = (
-    <div>
-      {/* Скриншоты работ */}
-      <div className="mb-6">
-        <p className="text-sm font-medium text-gray-700 mb-1">
-          Скриншоты работ
-        </p>
-        <p className="text-xs text-gray-400 mb-3">
-          Загрузите скриншоты статистики, примеры работ, отзывы клиентов
-        </p>
-        <div className="flex flex-wrap gap-2 mb-3">
-          {screenshotUrls.map((url, i) => (
-            <div
-              key={i}
-              className="relative w-24 h-24 rounded-lg overflow-hidden border border-gray-200 group"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={url}
-                alt={`Скриншот ${i + 1}`}
-                className="w-full h-full object-cover"
-              />
-              <button
-                type="button"
-                onClick={() =>
-                  setScreenshotUrls((prev) =>
-                    prev.filter((_, idx) => idx !== i),
-                  )
-                }
-                className="absolute top-1 right-1 w-5 h-5 bg-black/50 hover:bg-black/70 text-white rounded-full flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <DeleteOutlined />
-              </button>
-            </div>
-          ))}
-        </div>
-        <Upload
-          accept="image/*"
-          showUploadList={false}
-          disabled={screenshotUploading}
-          beforeUpload={(file) => {
-            handleScreenshotUpload(file as unknown as File);
-            return false;
-          }}
-        >
-          <Button
-            size="small"
-            icon={<PlusOutlined />}
-            loading={screenshotUploading}
-          >
-            {screenshotUploading ? "Загрузка..." : "Добавить скриншот"}
-          </Button>
-        </Upload>
-      </div>
-
-      {/* Ссылки на видео */}
-      <p className="text-sm font-medium text-gray-700 mb-1">Ссылки на видео</p>
-      <p className="text-sm text-gray-500 mb-4">
-        Минимум 3 работы для публикации в каталоге. Добавляйте ссылки на
-        реальные видео.
-      </p>
-      {portfolioItems.map((item, idx) => (
-        <Card
-          key={item.id ?? `new-${idx}`}
-          size="small"
-          className="border-gray-200 mb-3"
-        >
-          <div className="flex items-center justify-between mb-2">
-            <div className="font-medium text-gray-900">Работа #{idx + 1}</div>
-            <Button
-              type="text"
-              danger
-              size="small"
-              icon={<DeleteOutlined />}
-              onClick={() =>
-                setPortfolioItems((prev) => prev.filter((_, i) => i !== idx))
-              }
-            />
-          </div>
-          <div className="space-y-2">
-            <Input
-              value={item.videoUrl}
-              placeholder="Ссылка на видео (TikTok, YouTube, Instagram)"
-              onChange={(e) =>
-                setPortfolioItems((prev) =>
-                  prev.map((p, i) =>
-                    i === idx ? { ...p, videoUrl: e.target.value } : p,
-                  ),
-                )
-              }
-            />
-            <Select
-              value={item.category || undefined}
-          options={categories.map((c) => ({ label: c.label, value: c.key }))}
-              placeholder="Категория"
-              style={{ width: "100%" }}
-              onChange={(val) =>
-                setPortfolioItems((prev) =>
-                  prev.map((p, i) => (i === idx ? { ...p, category: val } : p)),
-                )
-              }
-            />
-            <Input.TextArea
-              value={item.description || ""}
-              placeholder="Описание (необязательно)"
-              rows={1}
-              onChange={(e) =>
-                setPortfolioItems((prev) =>
-                  prev.map((p, i) =>
-                    i === idx ? { ...p, description: e.target.value } : p,
-                  ),
-                )
-              }
-            />
-          </div>
-        </Card>
-      ))}
-      <Button
-        type="dashed"
-        icon={<PlusOutlined />}
-        block
-        onClick={() =>
-          setPortfolioItems((prev) => [
-            ...prev,
-            { videoUrl: "", category: "", description: "" },
-          ])
-        }
-      >
-        Добавить работу
-      </Button>
-    </div>
-  );
-
-  const tabItems = [
-    { key: "basic", label: "Основное", children: basicSection },
-    { key: "platforms", label: "Платформы", children: platformsSection },
-    { key: "content", label: "Контент", children: contentSection },
-    { key: "contacts", label: "Контакты", children: contactsSection },
-    { key: "portfolio", label: "Портфолио", children: portfolioSection },
-  ];
-
-  const collapseItems = [
-    {
-      key: "basic",
-      label: (
-        <span className="flex items-center gap-1.5">
-          <FileTextOutlined /> Основное
-        </span>
-      ),
-      children: basicSection,
-    },
-    {
-      key: "platforms",
-      label: (
-        <span className="flex items-center gap-1.5">
-          <MobileOutlined /> Платформы
-        </span>
-      ),
-      children: platformsSection,
-    },
-    {
-      key: "content",
-      label: (
-        <span className="flex items-center gap-1.5">
-          <VideoCameraOutlined /> Контент и ставка
-        </span>
-      ),
-      children: contentSection,
-    },
-    {
-      key: "contacts",
-      label: (
-        <span className="flex items-center gap-1.5">
-          <PhoneOutlined /> Контакты
-        </span>
-      ),
-      children: contactsSection,
-    },
-    {
-      key: "portfolio",
-      label: (
-        <span className="flex items-center gap-1.5">
-          <PictureOutlined /> Портфолио
-        </span>
-      ),
-      children: portfolioSection,
-    },
-  ];
+  const handleBack = () => {
+    router.push("/creators/manage");
+  };
 
   if (loadingData) {
     return (
@@ -802,88 +336,208 @@ function EditCreatorPageInner() {
 
   return (
     <PublicLayout>
-      {/* pb-24 чтобы контент не перекрывался sticky-кнопками */}
-      <div className="max-w-2xl flex flex-col gap-4 pb-24 sm:pb-6">
-        <Breadcrumb
-          items={[
-            { title: <Link href="/creators/manage">Мои профили</Link> },
-            { title: "Редактирование" },
-          ]}
-        />
+      <div className="-mt-8 sm:mt-0" />
 
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1">
-            Редактирование профиля
-          </h1>
-          <p className="text-gray-500 text-sm sm:text-base">
-            Заполните профиль полностью для лучшей видимости в каталоге
-          </p>
-        </div>
+      <div className="sticky top-14 md:top-16 lg:static z-10 bg-white -mx-4 px-4 sm:-mx-6 sm:px-6 lg:mx-0 lg:px-6 pt-2 sm:pt-4 pb-3 sm:pb-4 lg:pt-6 lg:pb-6 mb-3 sm:mb-4 lg:mb-6 border-b border-gray-100 shadow-sm lg:border lg:border-gray-200 lg:shadow-none lg:rounded-2xl">
+        <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-widest mb-0.5">
+          Редактирование
+        </p>
+        <h1 className="text-lg lg:text-xl font-bold text-gray-900 leading-tight">
+          Обновите профиль креатора
+        </h1>
+        <p className="text-sm text-gray-500 mt-1">
+          Заполните профиль полностью для лучшей видимости в каталоге
+        </p>
+      </div>
 
-        <Form form={form} layout="vertical" size="large">
-          {/* Мобиль: Collapse — все секции видны */}
-          <div className="block md:hidden">
-            <Collapse
-              defaultActiveKey={["basic"]}
-              items={collapseItems}
-              className="bg-white rounded-2xl border border-gray-200 overflow-hidden"
-            />
+      {isPublished && !hasActiveBoost && (
+        <div className="mb-4 rounded-2xl border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-fuchsia-50 p-4 flex items-center gap-3">
+          <div className="w-10 h-10 shrink-0 rounded-full bg-purple-600 flex items-center justify-center">
+            <RocketOutlined className="text-white text-lg" />
           </div>
-
-          {/* Десктоп: привычные Tabs */}
-          <div className="hidden md:block bg-white rounded-2xl border border-gray-200 overflow-hidden">
-            <Tabs items={tabItems} className="px-4 pt-4" />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-gray-900 text-sm sm:text-base leading-tight">
+              Обновили профиль? Продвиньте его
+            </div>
+            <div className="text-xs sm:text-sm text-gray-600 mt-0.5">
+              Поднимите в топ каталога — больше заказчиков увидят вас первым
+            </div>
           </div>
-        </Form>
-
-        {/* Десктоп: обычные кнопки */}
-        <div className="hidden sm:flex gap-3">
-          <Link href="/creators/manage">
-            <Button icon={<ArrowLeftOutlined />} style={{ height: 48 }}>
-              Отмена
+          <Link href={`/creators/${profileId}/boost`} className="shrink-0">
+            <Button
+              type="primary"
+              icon={<RocketOutlined />}
+              style={{ background: "#7c3aed", borderColor: "#7c3aed" }}
+            >
+              Продвинуть
             </Button>
           </Link>
-          <Button
-            type="primary"
-            icon={<SaveOutlined />}
-            loading={loading}
-            onClick={handleSave}
-            style={{
-              height: 48,
-              flex: 1,
-              background: "#0EA5E9",
-              borderColor: "#0EA5E9",
-            }}
-          >
-            Сохранить изменения
-          </Button>
+        </div>
+      )}
+
+      <div>
+        <div className="pb-28 lg:pb-8">
+          <div className="bg-white rounded-2xl border border-gray-200 p-6">
+            <Form
+              form={form}
+              name="creator_edit"
+              layout="vertical"
+              size="large"
+            >
+              <section>
+                <SectionHeading title="Расскажите о себе" />
+                <Step1Basics
+                  form={form}
+                  cities={cities}
+                  categories={categories}
+                  avatar={{
+                    url: avatarUrl,
+                    uploading: avatarUploading,
+                    onUpload: handleAvatarUpload,
+                  }}
+                />
+              </section>
+
+              <div className="border-t border-gray-100 my-8" />
+
+              <section>
+                <SectionHeading
+                  title="Где вы публикуете контент"
+                  subtitle="Укажите платформы и ссылки на ваши профили"
+                />
+                <Step2Platforms
+                  form={form}
+                  platforms={platforms}
+                  fetchingPlatform={fetchingPlatform}
+                  onFetchFollowers={handleFetchFollowers}
+                  platformUrlConfig={PLATFORM_URL_CONFIG}
+                />
+              </section>
+
+              <div className="border-t border-gray-100 my-8" />
+
+              <Step3Contacts
+                form={form}
+                platforms={platforms}
+                adFormats={adFormats}
+              />
+
+              <div className="border-t border-gray-100 my-8" />
+
+              <section>
+                <SectionHeading
+                  title="Портфолио"
+                  subtitle="Покажите заказчикам примеры ваших работ"
+                />
+
+                <p className="text-sm font-medium text-gray-700 mb-1">
+                  Скриншоты работ
+                </p>
+                <p className="text-xs text-gray-400 mb-3">
+                  Статистика, примеры работ, отзывы клиентов
+                </p>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {screenshotUrls.map((url, i) => (
+                    <div
+                      key={i}
+                      className="relative w-24 h-24 rounded-lg overflow-hidden border border-gray-200 group"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={url}
+                        alt={`Скриншот ${i + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setScreenshotUrls((prev) =>
+                            prev.filter((_, idx) => idx !== i),
+                          )
+                        }
+                        className="absolute top-1 right-1 w-5 h-5 bg-black/50 hover:bg-black/70 text-white rounded-full flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <DeleteOutlined />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <Upload
+                  accept="image/*"
+                  showUploadList={false}
+                  disabled={screenshotUploading}
+                  beforeUpload={(file) => {
+                    handleScreenshotUpload(file as unknown as File);
+                    return false;
+                  }}
+                >
+                  <Button icon={<PlusOutlined />} loading={screenshotUploading}>
+                    {screenshotUploading ? "Загрузка..." : "Добавить скриншот"}
+                  </Button>
+                </Upload>
+
+                <div className="mt-6">
+                  <p className="text-sm font-medium text-gray-700 mb-3">
+                    Ссылки на видео
+                  </p>
+                  <Step4Portfolio
+                    items={portfolioItems}
+                    onChange={setPortfolioItems}
+                    categories={categories}
+                    createNew={() => ({
+                      videoUrl: "",
+                      category: "",
+                      description: "",
+                      thumbnail: null,
+                    })}
+                    hideTip
+                  />
+                </div>
+              </section>
+            </Form>
+          </div>
+
+          <div className="hidden lg:flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="text-sm text-gray-500 hover:text-gray-700 transition-colors cursor-pointer"
+            >
+              Отменить
+            </button>
+            <Button
+              type="primary"
+              size="large"
+              icon={<ArrowRightOutlined />}
+              iconPlacement="end"
+              onClick={handleSave}
+              loading={loading}
+              style={{
+                height: 44,
+                fontSize: 15,
+                fontWeight: 600,
+                paddingLeft: 32,
+                paddingRight: 32,
+                background: "#3B82F6",
+                borderColor: "#3B82F6",
+              }}
+            >
+              Сохранить изменения
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Мобиль: sticky bottom bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 flex gap-2 p-3 bg-white border-t border-gray-200 sm:hidden">
-        <Link href="/creators/manage" className="shrink-0">
-          <Button
-            icon={<ArrowLeftOutlined />}
-            style={{ height: 48, width: 48 }}
-          />
-        </Link>
-        <Button
-          type="primary"
-          icon={<SaveOutlined />}
-          loading={loading}
-          onClick={handleSave}
-          style={{
-            height: 48,
-            flex: 1,
-            background: "#0EA5E9",
-            borderColor: "#0EA5E9",
-          }}
-          block
-        >
-          Сохранить изменения
-        </Button>
-      </div>
+      <StickyBottomBar
+        primaryLabel="Сохранить"
+        onPrimary={handleSave}
+        primaryIcon={<ArrowRightOutlined />}
+        primaryLoading={loading}
+        onBack={handleBack}
+        isFirstStep
+        cancelHref="/creators/manage"
+        className="lg:hidden"
+      />
     </PublicLayout>
   );
 }

@@ -6,6 +6,7 @@ import {
   serverError,
 } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { Platform } from "@prisma/client";
 import {
   safeInt,
   safeFloat,
@@ -17,7 +18,10 @@ import {
   LIMITS,
   validateContacts,
 } from "@/lib/validation";
+import { validateProfanityFields } from "@/lib/content-moderation";
 import { distributeBoostedByTier, countBoostedBeforePage } from "@/lib/interleave-boosts";
+import { autoThumbnailForUrl } from "@/lib/video-thumbnail";
+import { persistThumbnailIfEphemeral } from "@/lib/thumbnail-store";
 
 // Get valid category and city keys from database for validation
 async function getValidReferenceData() {
@@ -43,7 +47,12 @@ async function getValidReferenceData() {
 function getCreatorInclude() {
   return {
     platforms: true,
-    portfolio: { orderBy: { createdAt: "desc" as const } },
+    portfolio: {
+      orderBy: { createdAt: "desc" as const },
+      include: {
+        category: { select: { id: true, key: true, label: true } },
+      },
+    },
     priceItems: { orderBy: { sortOrder: "asc" as const } },
     boosts: { where: { expiresAt: { gte: new Date() } } },
     user: {
@@ -265,6 +274,9 @@ export async function POST(req: NextRequest) {
       age,
       username,
       availability,
+      avatar,
+      screenshots,
+      portfolio,
     } = body;
 
     // Валидация
@@ -280,6 +292,14 @@ export async function POST(req: NextRequest) {
     if (!platforms?.length) return badRequest("Укажите хотя бы одну платформу");
     if (!contentCategories?.length)
       return badRequest("Укажите хотя бы одну категорию");
+
+    const profanityErr = validateProfanityFields({
+      "Название профиля": title,
+      Имя: fullName,
+      "Ник (username)": username,
+      "О себе (bio)": bio,
+    });
+    if (profanityErr) return badRequest(profanityErr);
 
     // Validate city/categories — accept EN key or RU label
     const { validCategoryKeys, validCityKeys, categoryLabelToKey, cityLabelToKey } = await getValidReferenceData();
@@ -342,6 +362,77 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const detectPlatform = (url: string): Platform => {
+      const u = url.toLowerCase();
+      if (u.includes("tiktok.com")) return "TikTok";
+      if (u.includes("instagram.com")) return "Instagram";
+      if (u.includes("youtube.com") || u.includes("youtu.be")) return "YouTube";
+      if (u.includes("threads.net")) return "Threads";
+      if (u.includes("t.me") || u.includes("telegram.me")) return "Telegram";
+      if (
+        u.includes("vk.com") ||
+        u.includes("vkvideo.ru") ||
+        u.includes("vk.ru")
+      ) {
+        return "VK";
+      }
+      return "TikTok";
+    };
+
+    const rawPortfolio = Array.isArray(portfolio)
+      ? (portfolio as Array<{
+          videoUrl?: string;
+          category?: string | null;
+          description?: string | null;
+          thumbnail?: string | null;
+          views?: number | null;
+          likes?: number | null;
+        }>).filter((p) => p?.videoUrl?.trim())
+      : [];
+    const portfolioInput = await Promise.all(
+      rawPortfolio.map(async (item) => {
+        const catKey = item.category
+          ? resolveCategoryKey(item.category)
+          : null;
+        const catRecord = catKey
+          ? await prisma.category.findUnique({ where: { key: catKey } })
+          : null;
+        const videoUrl = item.videoUrl!.trim();
+        const rawThumbnail =
+          item.thumbnail?.trim() || autoThumbnailForUrl(videoUrl) || "";
+        const thumbnail = rawThumbnail
+          ? (await persistThumbnailIfEphemeral(rawThumbnail)) ?? ""
+          : "";
+        const views =
+          typeof item.views === "number" && Number.isFinite(item.views)
+            ? Math.max(0, Math.floor(item.views))
+            : null;
+        const likes =
+          typeof item.likes === "number" && Number.isFinite(item.likes)
+            ? Math.max(0, Math.floor(item.likes))
+            : null;
+        return {
+          videoUrl,
+          platform: detectPlatform(videoUrl),
+          thumbnail,
+          description: item.description ?? null,
+          categoryId: catRecord?.id ?? null,
+          views,
+          likes,
+        };
+      }),
+    );
+    const avatarUrl: string | null =
+      typeof avatar === "string" && avatar.trim() ? avatar : null;
+    const screenshotsInput: string[] = Array.isArray(screenshots)
+      ? (screenshots as unknown[]).filter(
+          (s): s is string => typeof s === "string" && s.length > 0,
+        )
+      : [];
+
+    const canPublish = avatarUrl !== null && portfolioInput.length >= 1;
+    const now = new Date();
+
     const profile = await prisma.creatorProfile.create({
       data: {
         userId,
@@ -354,6 +445,8 @@ export async function POST(req: NextRequest) {
         bio: bio ?? null,
         age: age ?? null,
         username: username ?? null,
+        avatar: avatarUrl,
+        screenshots: screenshotsInput,
         availability: availability ?? "available",
         contactTelegram: contacts?.telegram ?? null,
         contactWhatsapp: contacts?.whatsapp ?? null,
@@ -362,9 +455,22 @@ export async function POST(req: NextRequest) {
         minimumRate: pricing?.minimumRate ?? 0,
         negotiable: pricing?.negotiable ?? true,
         currency: pricing?.currency ?? "KZT",
-        isPublished: true,
-        publishedAt: new Date(),
-        raisedAt: new Date(),
+        isPublished: canPublish,
+        publishedAt: canPublish ? now : null,
+        raisedAt: canPublish ? now : null,
+        portfolio: {
+          create: portfolioInput.map((item) => ({
+            videoUrl: item.videoUrl,
+            platform: item.platform,
+            thumbnail: item.thumbnail,
+            description: item.description,
+            ...(item.categoryId
+              ? { category: { connect: { id: item.categoryId } } }
+              : {}),
+            views: item.views,
+            likes: item.likes,
+          })),
+        },
         platforms: {
           create: (platforms ?? []).map(
             (p: {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserId, unauthorized, badRequest, serverError } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PLATFORM_COMMISSION_RATE } from "@/lib/constants";
+import { sendSubmissionApprovedEmail } from "@/lib/email";
 
 /**
  * POST /api/admin/submissions/[id]/approve — Одобрить подачу видео.
@@ -128,6 +129,22 @@ export async function POST(
           data: { status: "exhausted" },
         });
       }
+    });
+
+    // Уведомление креатору. Fire-and-forget.
+    (async () => {
+      const creator = await prisma.user.findUnique({
+        where: { id: submission.creatorId },
+        select: { email: true },
+      });
+      if (!creator?.email) return;
+      await sendSubmissionApprovedEmail(creator.email, {
+        taskTitle: submission.ad.title,
+        approvedViews: effectiveViews,
+        payoutAmount,
+      });
+    })().catch((err) => {
+      console.error("[approve] creator email failed:", err);
     });
 
     return NextResponse.json({

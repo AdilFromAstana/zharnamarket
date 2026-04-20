@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserId, unauthorized, badRequest, serverError } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createRateLimiter, getRequestIP } from "@/lib/rate-limit";
+import { sendAdminReportEmail } from "@/lib/email";
 
 // Rate limit: 5 жалоб с IP за 15 минут
 const limiter = createRateLimiter(5, 15 * 60 * 1000);
@@ -61,6 +62,24 @@ export async function POST(req: NextRequest) {
         targetId,
         reason: fullReason,
       },
+    });
+
+    // Admin-алерт. Fire-and-forget.
+    (async () => {
+      const submitter = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true },
+      });
+      if (!submitter?.email) return;
+      await sendAdminReportEmail({
+        userEmail: submitter.email,
+        reportId: report.id,
+        targetType: report.targetType,
+        targetId: report.targetId,
+        reason: report.reason,
+      });
+    })().catch((err) => {
+      console.error("[reports] admin alert failed:", err);
     });
 
     return NextResponse.json({ id: report.id, message: "Жалоба отправлена" }, { status: 201 });

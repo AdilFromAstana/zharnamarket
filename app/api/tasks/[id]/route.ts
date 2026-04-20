@@ -43,6 +43,19 @@ export async function GET(
 
     if (!ad) return notFound("Объявление не найдено");
 
+    // Lazy expiry: закрываем окно race-condition с cron
+    if (
+      ad.status === "active" &&
+      ad.expiresAt !== null &&
+      ad.expiresAt < new Date()
+    ) {
+      await prisma.ad.update({
+        where: { id: ad.id },
+        data: { status: "expired" },
+      });
+      ad.status = "expired";
+    }
+
     // Просмотры теперь учитываются отдельным роутом POST /api/ads/[id]/view
     // с dedupe по ipHash (см. lib/views.ts). GET не инкрементирует счётчик,
     // чтобы F5 / бот-краулеры / preflight-запросы не накручивали статистику.

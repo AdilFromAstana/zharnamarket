@@ -17,6 +17,18 @@ export default function CreatorStickyBar({
 }: CreatorStickyBarProps) {
   const hasPriceItems = pricing.items && pricing.items.length > 0;
 
+  const primaryChannel = contactChannels[0];
+  const ctaLabel =
+    primaryChannel === "Telegram"
+      ? "В Telegram"
+      : primaryChannel === "WhatsApp"
+        ? "В WhatsApp"
+        : primaryChannel === "Телефон"
+          ? "Позвонить"
+          : primaryChannel === "Email"
+            ? "Написать"
+            : "Связаться";
+
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white/90 backdrop-blur-xl border-t border-gray-100 px-4 py-3 flex items-center gap-3">
       <div className="flex-1 min-w-0">
@@ -46,7 +58,7 @@ export default function CreatorStickyBar({
           flexShrink: 0,
         }}
       >
-        Связаться
+        {ctaLabel}
       </Button>
     </div>
   );

@@ -12,13 +12,12 @@ import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
+import { PLATFORM_COMMISSION_RATE } from "../lib/constants";
 
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL!,
 });
 const prisma = new PrismaClient({ adapter });
-
-const PLATFORM_COMMISSION_RATE = 0.2;
 
 async function main() {
   console.log("🌱 Seeding escrow demo data...");
@@ -153,8 +152,8 @@ async function main() {
 
   const APPROVED_VIEWS_1 = 200000;
   const GROSS_1 = (APPROVED_VIEWS_1 / 1000) * 50; // 10000
-  const COMMISSION_1 = GROSS_1 * PLATFORM_COMMISSION_RATE; // 2000
-  const PAYOUT_1 = GROSS_1 - COMMISSION_1; // 8000
+  const COMMISSION_1 = GROSS_1 * PLATFORM_COMMISSION_RATE;
+  const PAYOUT_1 = GROSS_1 - COMMISSION_1;
   const moderated1 = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000); // 2 дня назад
 
   if (!existing1) {
@@ -200,8 +199,8 @@ async function main() {
 
   const APPROVED_VIEWS_2 = 102000;
   const GROSS_2 = (APPROVED_VIEWS_2 / 1000) * 50; // 5100
-  const COMMISSION_2 = GROSS_2 * PLATFORM_COMMISSION_RATE; // 1020
-  const PAYOUT_2 = GROSS_2 - COMMISSION_2; // 4080
+  const COMMISSION_2 = GROSS_2 * PLATFORM_COMMISSION_RATE;
+  const PAYOUT_2 = GROSS_2 - COMMISSION_2;
   const moderated2 = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000); // 1 день назад
 
   if (!existing2) {

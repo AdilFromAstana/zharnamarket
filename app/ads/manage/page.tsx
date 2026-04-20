@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useRef, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
-import { Button, Tag, Tabs, Table, Dropdown, Badge, Spin, Modal } from "antd";
+import { Suspense, useCallback, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Button, Tag, Tabs, Table, Dropdown, Badge, Spin } from "antd";
+import type { BadgeProps } from "antd";
 import {
   PlusOutlined,
   EyeOutlined,
@@ -17,113 +18,65 @@ import {
   CloseOutlined,
   MessageOutlined,
   RocketOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import { toast } from "sonner";
 import PublicLayout from "@/components/layout/PublicLayout";
 import AdManagementCard from "@/components/ads/AdManagementCard";
+import RepublishModal from "@/components/republish/RepublishModal";
 import {
   AD_STATUS_COLORS,
   AD_STATUS_LABELS,
-  STORAGE_KEYS,
   PUBLICATION_PRICE,
+  BOOST_COLORS,
+  BOOST_LABELS,
+  PLATFORM_COLORS,
 } from "@/lib/constants";
-import { formatDate, daysUntilExpiry, formatPrice } from "@/lib/utils";
-import type { Ad, AdStatus } from "@/lib/types/ad";
-import { api, ApiError } from "@/lib/api-client";
+import { daysUntilExpiry, formatBudgetShort, formatPrice } from "@/lib/utils";
+import type { Ad } from "@/lib/types/ad";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-
-type FilterKey = "all" | "active" | "paused" | "expired";
-
-const FILTER_LABELS: Record<FilterKey, string> = {
-  all: "Все",
-  active: "Активные",
-  paused: "Пауза",
-  expired: "Истекшие",
-};
-
-const FILTER_STATUSES: Record<FilterKey, AdStatus[]> = {
-  all: [
-    "draft",
-    "pending_payment",
-    "active",
-    "paused",
-    "expired",
-    "archived",
-    "deleted",
-  ],
-  active: ["active"],
-  paused: ["paused"],
-  expired: ["expired", "archived"],
-};
+import { formatDaysLeft, getTopBoost } from "./_lib/boost";
+import {
+  FILTER_LABELS,
+  filterAds,
+  getFilterCounts,
+  parseFilter,
+  type FilterKey,
+} from "./_lib/filter";
+import { useMyAds } from "./_hooks/useMyAds";
+import { useAdActions } from "./_hooks/useAdActions";
+import { track } from "@/lib/analytics";
 
 function AdsManagePageInner() {
-  // Защита страницы — редирект если не авторизован
   const { isLoading: authLoading } = useRequireAuth();
-
   const searchParams = useSearchParams();
-  const [ads, setAds] = useState<Ad[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
-  const [activeTab, setActiveTab] = useState("all");
-  const [pendingPayment, setPendingPayment] = useState<{
-    savedAt: string;
-  } | null>(null);
+  const router = useRouter();
 
-  // Обработка возврата с платёжного провайдера
-  const paymentHandled = useRef(false);
-  useEffect(() => {
-    if (paymentHandled.current) return;
-    const payment = searchParams.get("payment");
-    if (payment === "success") {
-      paymentHandled.current = true;
-      toast.success("Оплата прошла! Объявление опубликовано.");
-      try {
-        localStorage.removeItem(STORAGE_KEYS.PAYMENT_STATE);
-        localStorage.removeItem(STORAGE_KEYS.AD_DRAFT);
-      } catch {
-        /* ignore */
-      }
-      window.history.replaceState({}, "", "/ads/manage");
-    } else if (payment === "failed") {
-      paymentHandled.current = true;
-      toast.error("Оплата не прошла. Попробуйте ещё раз.");
-      window.history.replaceState({}, "", "/ads/manage");
-    }
-  }, [searchParams]);
+  const {
+    ads,
+    setAds,
+    loading,
+    refetch,
+    pendingPayment,
+    dismissPendingPayment,
+  } = useMyAds(authLoading);
+  const { pause, resume, archive, remove } = useAdActions(setAds);
+  const [republishAd, setRepublishAd] = useState<Ad | null>(null);
 
-  // Загружаем объявления с сервера
-  useEffect(() => {
-    if (authLoading) return;
-    const fetchAds = async () => {
-      setLoading(true);
-      try {
-        const data = await api.get<Ad[]>("/api/tasks/my");
-        setAds(data);
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 401) {
-          toast.error("Необходима авторизация");
-        }
-        setAds([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchAds();
-  }, [authLoading]);
-
-  // Проверяем незавершённую оплату публикации в localStorage
-  useEffect(() => {
-    try {
-      const state = localStorage.getItem(STORAGE_KEYS.PAYMENT_STATE);
-      if (state) {
-        const parsed = JSON.parse(state) as { savedAt: string };
-        setPendingPayment(parsed);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
+  const filter = parseFilter(searchParams.get("filter"));
+  const setFilter = useCallback(
+    (next: FilterKey) => {
+      track("manage_filter_change", { entity: "ad", filter: next });
+      const params = new URLSearchParams(searchParams.toString());
+      if (next === "all") params.delete("filter");
+      else params.set("filter", next);
+      const query = params.toString();
+      router.replace(`/ads/manage${query ? `?${query}` : ""}`, {
+        scroll: false,
+      });
+    },
+    [router, searchParams],
+  );
 
   if (authLoading) {
     return (
@@ -135,68 +88,14 @@ function AdsManagePageInner() {
     );
   }
 
-  const dismissPendingPayment = () => {
-    try {
-      localStorage.removeItem(STORAGE_KEYS.PAYMENT_STATE);
-      localStorage.removeItem(STORAGE_KEYS.AD_DRAFT);
-    } catch {
-      // ignore
-    }
-    setPendingPayment(null);
-  };
-
-  const filterByStatus = (statuses: AdStatus[]) =>
-    ads.filter((a) => statuses.includes(a.status));
-
-  const filteredCards =
-    activeFilter === "all"
-      ? ads
-      : filterByStatus(FILTER_STATUSES[activeFilter]);
-
-  const handleAction = async (adId: string, action: string) => {
-    try {
-      if (action === "pause") {
-        await api.post(`/api/tasks/${adId}/pause`);
-        setAds((prev) =>
-          prev.map((a) =>
-            a.id === adId ? { ...a, status: "paused" as AdStatus } : a,
-          ),
-        );
-        toast.success("Объявление приостановлено");
-      } else if (action === "resume") {
-        await api.post(`/api/tasks/${adId}/resume`);
-        setAds((prev) =>
-          prev.map((a) =>
-            a.id === adId ? { ...a, status: "active" as AdStatus } : a,
-          ),
-        );
-        toast.success("Объявление возобновлено");
-      } else if (action === "archive") {
-        await api.post(`/api/tasks/${adId}/archive`);
-        setAds((prev) =>
-          prev.map((a) =>
-            a.id === adId ? { ...a, status: "archived" as AdStatus } : a,
-          ),
-        );
-        toast.success("Объявление архивировано");
-      } else if (action === "delete") {
-        await api.delete(`/api/tasks/${adId}`);
-        setAds((prev) => prev.filter((a) => a.id !== adId));
-        toast.success("Объявление удалено");
-      }
-    } catch (err) {
-      if (err instanceof ApiError) {
-        toast.error(err.message);
-      } else {
-        toast.error("Ошибка выполнения");
-      }
-    }
-  };
+  const filterCounts = getFilterCounts(ads);
+  const filteredCards = filterAds(ads, filter);
 
   const columns: ColumnsType<Ad> = [
     {
       title: "Объявление",
       key: "title",
+      width: 360,
       render: (_, ad) => (
         <div>
           <Link
@@ -205,9 +104,19 @@ function AdsManagePageInner() {
           >
             {ad.title}
           </Link>
-          <div className="flex items-center gap-2 mt-1">
-            <Tag>{ad.platform}</Tag>
-            <Tag>{ad.city}</Tag>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <div className="flex items-center gap-1 text-xs text-gray-600">
+              <span
+                className="w-4 h-4 rounded flex items-center justify-center text-white text-[10px] font-bold"
+                style={{ background: PLATFORM_COLORS[ad.platform] }}
+              >
+                {ad.platform.charAt(0)}
+              </span>
+              {ad.platform}
+            </div>
+            {ad.city && (
+              <span className="text-xs text-gray-400">· {ad.city}</span>
+            )}
           </div>
         </div>
       ),
@@ -215,20 +124,35 @@ function AdsManagePageInner() {
     {
       title: "Статус",
       key: "status",
-      width: 140,
-      render: (_, ad) => (
-        <div>
-          <Badge
-            status={AD_STATUS_COLORS[ad.status] as any}
-            text={AD_STATUS_LABELS[ad.status]}
-          />
-          {ad.status === "active" && ad.expiresAt && (
-            <div className="text-xs text-gray-400 mt-0.5">
-              Осталось: {daysUntilExpiry(ad.expiresAt)} дн.
-            </div>
-          )}
-        </div>
-      ),
+      width: 180,
+      render: (_, ad) => {
+        const topBoost = getTopBoost(ad.activeBoostDetails);
+        return (
+          <div>
+            <Badge
+              status={AD_STATUS_COLORS[ad.status] as BadgeProps["status"]}
+              text={AD_STATUS_LABELS[ad.status]}
+            />
+            {topBoost && (
+              <div className="mt-1">
+                <Tag
+                  color={BOOST_COLORS[topBoost.boostType]}
+                  icon={<RocketOutlined />}
+                  className="m-0"
+                >
+                  {BOOST_LABELS[topBoost.boostType]} ·{" "}
+                  {formatDaysLeft(topBoost.expiresAt)}
+                </Tag>
+              </div>
+            )}
+            {ad.status === "active" && ad.expiresAt && (
+              <div className="text-xs text-gray-400 mt-0.5">
+                Осталось: {daysUntilExpiry(ad.expiresAt)} дн.
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     {
       title: "Статистика",
@@ -246,20 +170,27 @@ function AdsManagePageInner() {
       ),
     },
     {
-      title: "Опубликовано",
-      key: "date",
-      width: 120,
+      title: "Бюджет",
+      key: "budget",
+      width: 160,
+      align: "right",
       render: (_, ad) => (
-        <span className="text-sm text-gray-500">
-          {formatDate(ad.publishedAt)}
+        <span className="text-sm text-gray-700">
+          {formatBudgetShort(
+            ad.budgetType,
+            ad.budgetFrom,
+            ad.budgetTo,
+            ad.budgetDetails,
+          )}
         </span>
       ),
     },
     {
       title: "",
       key: "actions",
-      width: 60,
+      width: 180,
       render: (_, ad) => {
+        const hasActiveBoost = (ad.activeBoostDetails ?? []).length > 0;
         const menuItems = [
           {
             key: "view",
@@ -275,15 +206,10 @@ function AdsManagePageInner() {
           ...(ad.status === "active"
             ? [
                 {
-                  key: "boost",
-                  icon: <RocketOutlined />,
-                  label: <Link href={`/ads/${ad.id}/boost`}>Продвинуть</Link>,
-                },
-                {
                   key: "pause",
                   icon: <PauseOutlined />,
                   label: "Поставить на паузу",
-                  onClick: () => handleAction(ad.id, "pause"),
+                  onClick: () => pause(ad.id),
                 },
               ]
             : []),
@@ -293,7 +219,7 @@ function AdsManagePageInner() {
                   key: "resume",
                   icon: <PlayCircleOutlined />,
                   label: "Возобновить",
-                  onClick: () => handleAction(ad.id, "resume"),
+                  onClick: () => resume(ad.id),
                 },
               ]
             : []),
@@ -301,7 +227,7 @@ function AdsManagePageInner() {
             key: "archive",
             icon: <InboxOutlined />,
             label: "Архивировать",
-            onClick: () => handleAction(ad.id, "archive"),
+            onClick: () => archive(ad.id),
           },
           { type: "divider" as const },
           {
@@ -309,89 +235,116 @@ function AdsManagePageInner() {
             icon: <DeleteOutlined />,
             label: "Удалить",
             danger: true,
-            onClick: () =>
-              Modal.confirm({
-                title: "Удалить объявление?",
-                content: "Это действие необратимо.",
-                okText: "Удалить",
-                okType: "danger",
-                cancelText: "Отмена",
-                onOk: () => handleAction(ad.id, "delete"),
-              }),
+            onClick: () => remove(ad.id),
           },
         ];
 
+        const needsPayment =
+          ad.status === "draft" || ad.status === "pending_payment";
+
         return (
-          <Dropdown menu={{ items: menuItems }} trigger={["click"]}>
-            <Button type="text" icon={<EllipsisOutlined />} />
-          </Dropdown>
+          <div className="flex items-center gap-2 justify-end">
+            {needsPayment && (
+              <Link href={`/ads/new?resume=${ad.id}`}>
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<CreditCardOutlined />}
+                  style={{ background: "#0EA5E9", borderColor: "#0EA5E9" }}
+                >
+                  Оплатить
+                </Button>
+              </Link>
+            )}
+            {ad.status === "expired" && ad.paymentMode !== "escrow" && (
+              <Button
+                type="primary"
+                size="small"
+                icon={<ReloadOutlined />}
+                onClick={() => {
+                  track("republish_cta_click", {
+                    ad_id: ad.id,
+                    placement: "ads_manage_desktop_inline",
+                    mode: "expired",
+                  });
+                  setRepublishAd(ad);
+                }}
+                style={{ background: "#0EA5E9", borderColor: "#0EA5E9" }}
+              >
+                Возобновить
+              </Button>
+            )}
+            {ad.status === "paused" && (
+              <Button
+                type="primary"
+                size="small"
+                icon={<PlayCircleOutlined />}
+                onClick={() => resume(ad.id)}
+                style={{ background: "#0EA5E9", borderColor: "#0EA5E9" }}
+              >
+                Возобновить
+              </Button>
+            )}
+            {ad.status === "active" && (
+              <Link
+                href={`/ads/${ad.id}/boost`}
+                onClick={() =>
+                  track("boost_cta_click", {
+                    entity: "ad",
+                    entity_id: ad.id,
+                    placement: "ads_manage_desktop_inline",
+                    has_active_boost: hasActiveBoost,
+                  })
+                }
+              >
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<RocketOutlined />}
+                  style={{
+                    background: hasActiveBoost ? "#fff" : "#7c3aed",
+                    borderColor: "#7c3aed",
+                    color: hasActiveBoost ? "#7c3aed" : "#fff",
+                  }}
+                >
+                  {hasActiveBoost ? "Продлить" : "Продвинуть"}
+                </Button>
+              </Link>
+            )}
+            <Dropdown menu={{ items: menuItems }} trigger={["click"]}>
+              <Button type="text" icon={<EllipsisOutlined />} />
+            </Dropdown>
+          </div>
         );
       },
     },
   ];
 
-  const tabItems = [
-    {
-      key: "all",
-      label: `Все (${ads.length})`,
+  const handleAction = (id: string, action: string) => {
+    if (action === "pause") pause(id);
+    else if (action === "resume") resume(id);
+    else if (action === "archive") archive(id);
+    else if (action === "delete") remove(id);
+  };
+
+  const tabItems = (Object.keys(FILTER_LABELS) as FilterKey[])
+    .filter((key) => key === "all" || key === filter || filterCounts[key] > 0)
+    .map((key) => ({
+      key,
+      label: `${FILTER_LABELS[key]} (${filterCounts[key]})`,
       children: (
         <Table
-          dataSource={ads}
+          dataSource={filterAds(ads, key)}
           columns={columns}
           rowKey="id"
           size="middle"
           loading={loading}
         />
       ),
-    },
-    {
-      key: "active",
-      label: `Активные (${filterByStatus(["active"]).length})`,
-      children: (
-        <Table
-          dataSource={filterByStatus(["active"])}
-          columns={columns}
-          rowKey="id"
-          size="middle"
-        />
-      ),
-    },
-    {
-      key: "paused",
-      label: `Пауза (${filterByStatus(["paused"]).length})`,
-      children: (
-        <Table
-          dataSource={filterByStatus(["paused"])}
-          columns={columns}
-          rowKey="id"
-          size="middle"
-        />
-      ),
-    },
-    {
-      key: "expired",
-      label: `Истекшие (${filterByStatus(["expired", "archived"]).length})`,
-      children: (
-        <Table
-          dataSource={filterByStatus(["expired", "archived"])}
-          columns={columns}
-          rowKey="id"
-          size="middle"
-        />
-      ),
-    },
-  ];
-
-  const filterCounts: Record<FilterKey, number> = {
-    all: ads.length,
-    active: filterByStatus(["active"]).length,
-    paused: filterByStatus(["paused"]).length,
-    expired: filterByStatus(["expired", "archived"]).length,
-  };
+    }));
 
   return (
     <PublicLayout>
-      {/* Шапка */}
       <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1">
@@ -414,7 +367,6 @@ function AdsManagePageInner() {
         </Link>
       </div>
 
-      {/* Баннер незавершённой оплаты публикации */}
       {pendingPayment && (
         <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 mb-6 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -454,23 +406,23 @@ function AdsManagePageInner() {
         </div>
       )}
 
-      {/* Статистика */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {[
           {
             label: "Активных",
-            value: filterByStatus(["active"]).length,
+            value: filterCounts.active,
             color: "#22c55e",
           },
           {
-            label: "На паузе",
-            value: filterByStatus(["paused"]).length,
-            color: "#3B82F6",
+            label: "Истекших",
+            value: filterCounts.expired,
+            color: "#ef4444",
           },
           {
-            label: "Истекших",
-            value: filterByStatus(["expired"]).length,
-            color: "#ef4444",
+            label: "С бустом",
+            value: ads.filter((a) => (a.activeBoostDetails ?? []).length > 0)
+              .length,
+            color: "#7c3aed",
           },
           {
             label: "Всего обращений",
@@ -493,17 +445,16 @@ function AdsManagePageInner() {
         ))}
       </div>
 
-      {/* Мобиль: горизонтальные чипы-фильтры + карточки */}
       <div className="block md:hidden">
         <div className="overflow-x-auto scrollbar-hide pb-2 mb-4 -mx-4 px-4">
           <div className="flex gap-2 w-max">
             {(Object.keys(FILTER_LABELS) as FilterKey[]).map((key) => (
               <button
                 key={key}
-                onClick={() => setActiveFilter(key)}
+                onClick={() => setFilter(key)}
                 className={[
                   "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors",
-                  activeFilter === key
+                  filter === key
                     ? "bg-blue-600 text-white"
                     : "bg-white border border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600",
                 ].join(" ")}
@@ -512,7 +463,7 @@ function AdsManagePageInner() {
                 <span
                   className={[
                     "text-xs px-1.5 py-0.5 rounded-full font-semibold leading-none",
-                    activeFilter === key
+                    filter === key
                       ? "bg-white/20 text-white"
                       : "bg-gray-100 text-gray-500",
                   ].join(" ")}
@@ -531,21 +482,37 @@ function AdsManagePageInner() {
             </div>
           ) : (
             filteredCards.map((ad) => (
-              <AdManagementCard key={ad.id} ad={ad} onAction={handleAction} />
+              <AdManagementCard
+                key={ad.id}
+                ad={ad}
+                onAction={handleAction}
+                onRepublish={(a) => setRepublishAd(a)}
+              />
             ))
           )}
         </div>
       </div>
 
-      {/* Десктоп: Tabs + Table */}
       <div className="hidden md:block bg-white rounded-xl border border-gray-200">
         <Tabs
-          activeKey={activeTab}
-          onChange={setActiveTab}
+          activeKey={filter}
+          onChange={(key) => setFilter(key as FilterKey)}
           items={tabItems}
           tabBarStyle={{ paddingLeft: 16, paddingRight: 16 }}
         />
       </div>
+
+      {republishAd && (
+        <RepublishModal
+          open={!!republishAd}
+          onClose={() => setRepublishAd(null)}
+          adId={republishAd.id}
+          adTitle={republishAd.title}
+          mode={republishAd.status === "expired" ? "expired" : "active"}
+          currentExpiresAt={republishAd.expiresAt}
+          onSuccess={refetch}
+        />
+      )}
     </PublicLayout>
   );
 }
